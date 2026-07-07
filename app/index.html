@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GlobalTrade Autopilot</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar" aria-label="主导航">
+        <div class="brand">
+          <div class="brand-mark">GT</div>
+          <div>
+            <strong>GlobalTrade</strong>
+            <span>内部出海交易中台</span>
+          </div>
+        </div>
+
+        <nav class="nav-list">
+          <button class="nav-item is-active" type="button" data-view="dashboard">总览</button>
+          <button class="nav-item" type="button" data-view="opportunities">机会池</button>
+          <button class="nav-item" type="button" data-view="listings">上架审核</button>
+          <button class="nav-item" type="button" data-view="orders">订单履约</button>
+          <button class="nav-item" type="button" data-view="suppliers">供应商</button>
+          <button class="nav-item" type="button" data-view="reports">经营复盘</button>
+          <button class="nav-item" type="button" data-view="settings">配置中心</button>
+        </nav>
+
+        <div class="sidebar-note">
+          <span>安全模式</span>
+          <strong>仅本地演示</strong>
+          <p>不连接外部平台，不执行真实发布、采购或付款。</p>
+        </div>
+      </aside>
+
+      <div class="main-shell">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Internal Operations Platform</p>
+            <h1 id="viewTitle">总览</h1>
+          </div>
+          <div class="topbar-actions">
+            <button class="ghost-button" id="copyReportButton" type="button">复制策略摘要</button>
+            <button class="primary-button" id="createDraftButton" type="button">生成上架草稿</button>
+          </div>
+        </header>
+
+        <main class="content">
+          <section class="filter-bar" aria-label="筛选条件">
+            <label>
+              国家
+              <select id="countryFilter">
+                <option value="all">全部国家</option>
+              </select>
+            </label>
+            <label>
+              平台
+              <select id="platformFilter">
+                <option value="all">全部平台</option>
+              </select>
+            </label>
+            <label>
+              类目
+              <select id="categoryFilter">
+                <option value="all">全部类目</option>
+              </select>
+            </label>
+            <label>
+              最低毛利率
+              <input id="marginThreshold" type="number" min="0" max="80" value="25">
+            </label>
+          </section>
+
+          <section id="dashboardView" class="view is-active"></section>
+          <section id="opportunitiesView" class="view"></section>
+          <section id="listingsView" class="view"></section>
+          <section id="ordersView" class="view"></section>
+          <section id="suppliersView" class="view"></section>
+          <section id="reportsView" class="view"></section>
+          <section id="settingsView" class="view"></section>
+        </main>
+      </div>
+    </div>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
