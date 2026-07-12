@@ -5,6 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "node scripts/serve.js",
-    "test": "node tests/scoring.test.js"
+    "test": "node tests/scoring.test.js && node tests/import-utils.test.js"
   }
 }

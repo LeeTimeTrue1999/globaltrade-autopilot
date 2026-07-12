@@ -6,7 +6,7 @@ const round = (value, digits = 2) => {
 };
 
 export function calculateCost(marketProduct, supplierProduct, config) {
-  const fxRate = config.fxRatesToCny[marketProduct.currency];
+  const fxRate = config.fxRatesToCny[marketProduct.currency] || 1;
   const salePriceCny = marketProduct.price * fxRate;
   const platformFee = salePriceCny * (config.platformFees[marketProduct.platform] || 0.1);
   const paymentFee = salePriceCny * config.paymentFeeRate;

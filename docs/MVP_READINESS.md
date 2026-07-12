@@ -1,0 +1,84 @@
+# MVP Readiness Board
+
+This document defines what the first local MVP must contain, what is already visible in the frontend, and what is intentionally not implemented yet. Keep this file aligned with `docs/WORK_TODO.md` and the frontend `MVP 初版` page.
+
+## MVP Goal
+
+The first MVP should prove one complete cross-border operating loop without backend dependency:
+
+1. Bring in product, supplier, logistics, order, and cost assumptions.
+2. Discover and score opportunities.
+3. Decide which products to test.
+4. Create listing drafts for translation, localization, and manual review.
+5. Track orders, revenue, shipment tasks, and operating follow-up.
+6. Export or restore the local workspace for handoff.
+
+## Frontend Visibility Rule
+
+Every MVP-critical capability should be visible from the frontend in one of three states:
+
+- `已完成`: usable in the local MVP.
+- `部分完成`: usable but still based on simplified/local assumptions.
+- `待补`: required before a stronger MVP demo or team pilot.
+- `暂缓`: intentionally deferred because it requires backend, API credentials, or production operations.
+
+If a feature is only documented but not visible in the frontend, it should appear in the `MVP 初版` page as a gap.
+
+## Current MVP Capability Matrix
+
+| Area | Frontend status | MVP status | Notes |
+| --- | --- | --- | --- |
+| Local workspace storage | 配置中心 | 已完成 | Browser localStorage plus JSON backup/restore. |
+| Data import | 数据导入 | 已完成 | Market products, supplier products, logistics quotes, and orders support CSV/Excel-compatible imports with preview and validation. |
+| Field mapping | 数据导入 | 已完成 | Source columns map into canonical fields before confirmation. |
+| Product management | 商品管理 | 已完成 | Shows market product data and import entry points. |
+| Supplier management | 供应商管理 / 供应商匹配 | 已完成 | Supplier data is manageable and can be manually matched to products. |
+| Logistics quote management | 物流报价 | 已完成 | Local logistics quotes can be created and used to refresh product costs. |
+| Opportunity discovery | 机会池 | 部分完成 | Link/category discovery exists, but signals are locally simulated until real parsing/API data is connected. |
+| Opportunity detail review | 机会池 | 已完成 | Shows market data, supplier data, score factors, cost breakdown, and research source notes. |
+| Listing draft handoff | 机会池 / 上架草稿 | 已完成 | Opportunities can generate or open listing drafts. |
+| Listing review | 上架草稿 | 部分完成 | Review panel exists, but translation/localization editing is not yet a full workflow. |
+| Cost assumptions | 配置中心 / 机会池 | 部分完成 | Fees, FX, ad cost, return loss, packaging, supplier cost, and logistics cost are visible; source provenance needs clearer templates by platform/country/category. |
+| Order and revenue data | 订单管理 / 收入数据 | 已完成 | Order import drives revenue summary and order management views. |
+| Shipment fulfillment | 发货履约 | 部分完成 | Local shipment tasks and simulated tracking exist; no real platform callback or logistics tracking API yet. |
+| Audit log | 配置中心 | 已完成 | Local audit records important workspace actions. |
+| Data source registry | 数据导入 | 已完成 | Manual upload and future API candidates are managed together. |
+| KPI weekly review | 经营复盘 | 待补 | Needs stronger KPI dashboard for GMV, margin, test outcome, supplier issues, and logistics exceptions. |
+| Strategy action workflow | 多页面 | 待补 | Recommendations are visible, but approve/reject/execute workflow is not yet formalized. |
+| Real user roles | Frontend not active | 暂缓 | Deferred until hosted multi-user mode exists. |
+| Backend persistence | Frontend not active | 暂缓 | Deferred until data acquisition and collaboration model are decided. |
+| Object storage for original files | Frontend not active | 暂缓 | Current MVP keeps parsed rows locally; hosted object storage is later. |
+
+## Information Needed From Operators
+
+### Required For First Useful MVP Demo
+
+- Target platforms and countries to test first.
+- Product rows with platform, country, category, title, local title, price, currency, rating, review count, sales signal, trend, competition level, and source URL if available.
+- Supplier rows with market product id, supplier name, source platform, purchase price, MOQ, dispatch days, supplier rating, monthly sales, dropship support, and backup supplier.
+- Logistics rows with provider, route, destination country, weight or parcel assumptions, cost in CNY, and delivery days.
+- Order rows with platform, country, SKU/product, amount in CNY, profit in CNY, status, and owner.
+- Cost assumptions for platform fee, payment fee, ad cost, return loss, packaging cost, FX rates, and minimum margin threshold.
+
+### Helpful For Better Scoring
+
+- Competitor price bands.
+- Real search volume, ranking, sales, review, and ad data.
+- Category-level return/refund/refusal rates.
+- Product weight, dimensions, volumetric weight rule, and restricted goods flags.
+- Supplier on-time delivery and defect history.
+- Compliance notes for brand/IP, battery, liquid, food, cosmetics, children, medical, or country-specific restrictions.
+
+## Open MVP Gaps
+
+1. Real URL/platform parsing is not connected.
+2. Translation and localization are visible but not yet editable as a proper workflow.
+3. Cost templates need platform/country/category provenance so every fee can show its source.
+4. KPI weekly review needs clearer metrics and test outcome tracking.
+5. Strategy recommendations need an approval/action log.
+6. Shipment tracking is simulated; real carrier/platform sync is deferred.
+7. Multi-user permissions and backend persistence are intentionally out of scope for the local MVP.
+
+## Operating Rule
+
+Before calling the MVP ready for a team demo, the frontend `MVP 初版` page should show no `待补` item in the P0 scope. P1 gaps can remain if they are clearly labeled and do not block the core local operating loop.

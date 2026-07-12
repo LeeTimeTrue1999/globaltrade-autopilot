@@ -2,6 +2,8 @@
 
 后续后端实现时按 REST 资源建模。MVP 原型暂不启动服务。
 
+后端持久化、对象存储、权限和审计设计见 `docs/BACKEND_PERSISTENCE_DESIGN.md`。
+
 ## Auth
 
 ```http
@@ -41,6 +43,52 @@ POST /api/supplier-products
 POST /api/supplier-products/import
 GET /api/supplier-products/{id}
 PATCH /api/supplier-products/{id}
+```
+
+## Import Batches
+
+```http
+POST /api/import-batches
+GET /api/import-batches
+GET /api/import-batches/{id}
+POST /api/import-batches/{id}/parse
+POST /api/import-batches/{id}/validate
+POST /api/import-batches/{id}/confirm
+POST /api/import-batches/{id}/rollback
+GET /api/import-batches/{id}/rows
+GET /api/import-batches/{id}/original-file-url
+```
+
+## Field Mappings
+
+```http
+GET /api/field-mappings
+POST /api/field-mappings
+GET /api/field-mappings/{id}
+PATCH /api/field-mappings/{id}
+POST /api/field-mappings/{id}/archive
+```
+
+## Supplier Matches
+
+```http
+GET /api/supplier-matches
+POST /api/supplier-matches
+PATCH /api/supplier-matches/{id}
+POST /api/supplier-matches/{id}/approve
+POST /api/supplier-matches/{id}/reject
+GET /api/market-products/{id}/supplier-matches
+```
+
+## Logistics Rate Cards
+
+```http
+GET /api/logistics-rate-cards
+POST /api/logistics-rate-cards
+GET /api/logistics-rate-cards/{id}
+PATCH /api/logistics-rate-cards/{id}
+POST /api/logistics-rate-cards/{id}/archive
+POST /api/logistics-rate-cards/quote
 ```
 
 ## Listing Drafts
@@ -96,6 +144,19 @@ PATCH /api/config/cost-templates
 
 ```http
 GET /api/audit-logs
+GET /api/audit-logs/{id}
+```
+
+## Users And Roles
+
+```http
+GET /api/users
+POST /api/users
+PATCH /api/users/{id}
+POST /api/users/{id}/disable
+GET /api/roles
+POST /api/users/{id}/roles
+DELETE /api/users/{id}/roles/{role_id}
 ```
 
 所有关键动作必须写入审计日志：
@@ -108,4 +169,3 @@ GET /api/audit-logs
 - 采购。
 - 调价。
 - 删除。
-

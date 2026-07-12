@@ -10,14 +10,21 @@
 - `docs/DATA_MODEL.md`：核心数据模型和字段说明。
 - `docs/DATA_REQUIREMENTS_AND_SOURCES.md`：所需数据、字段、接入优先级和推荐数据源。
 - `docs/PRODUCT_RESEARCH_AUTOMATION.md`：选品调研自动化流程、评分模型和报告模板。
+- `docs/CROSS_BORDER_OPERATIONS_REVIEW.md`：跨境电商现实运转方式和当前框架问题清单。
 - `docs/PAYMENT_SETTLEMENT_DESIGN.md`：支付、结算、支付宝 MCP、跨境收款和对账方案。
 - `docs/API_CONTRACT.md`：后端接口契约草案。
+- `docs/BACKEND_PERSISTENCE_DESIGN.md`：多人可用业务系统所需的后端持久化、对象存储、权限和审计设计。
 - `docs/SECURITY.md`：安全、合规、访问控制设计。
 - `docs/ENGINEERING_PLAN.md`：数据库、部署、多人共享、服务器和运维方案。
 - `docs/DEPLOYMENT_PLAN.md`：服务器部署、HTTPS、备份、监控和发布流程。
 - `docs/INFRASTRUCTURE_CHECKLIST.md`：从本地到生产的基础设施检查清单。
 - `docs/TODO_DECISIONS.md`：需要业务负责人后续拍板的问题。
+- `docs/WORK_TODO.md`：项目长期 TODO、运营日志、决策、数据和基础设施后续工作台。
 - `app/`：无外部依赖的 MVP 原型，可直接用浏览器打开。
+
+## 项目运营要求
+
+`docs/WORK_TODO.md` 是后续工作的统一运营文档。以后所有产品、设计、工程、数据、基础设施和文档工作，开始前必须先检查这个文档；结束前必须更新 TODO 状态、决策、工作日志、验证结果和新增后续任务。
 
 ## 快速预览
 

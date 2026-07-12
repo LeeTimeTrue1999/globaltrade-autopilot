@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GlobalTrade Autopilot</title>
+    <title>出海交易中台</title>
     <link rel="stylesheet" href="./styles.css">
   </head>
   <body>
@@ -12,18 +12,30 @@
         <div class="brand">
           <div class="brand-mark">GT</div>
           <div>
-            <strong>GlobalTrade</strong>
+            <strong>出海交易中台</strong>
             <span>内部出海交易中台</span>
           </div>
         </div>
 
         <nav class="nav-list">
+          <div class="nav-section-title">运营平台</div>
           <button class="nav-item is-active" type="button" data-view="dashboard">总览</button>
           <button class="nav-item" type="button" data-view="opportunities">机会池</button>
-          <button class="nav-item" type="button" data-view="listings">上架审核</button>
-          <button class="nav-item" type="button" data-view="orders">订单履约</button>
-          <button class="nav-item" type="button" data-view="suppliers">供应商</button>
+          <button class="nav-item" type="button" data-view="listings">上架草稿</button>
+          <button class="nav-item" type="button" data-view="fulfillment">发货履约</button>
           <button class="nav-item" type="button" data-view="reports">经营复盘</button>
+
+          <div class="nav-section-title">数据管理</div>
+          <button class="nav-item" type="button" data-view="dataSources">数据导入</button>
+          <button class="nav-item" type="button" data-view="products">商品管理</button>
+          <button class="nav-item" type="button" data-view="suppliers">供应商管理</button>
+          <button class="nav-item" type="button" data-view="orders">订单管理</button>
+          <button class="nav-item" type="button" data-view="finance">收入数据</button>
+          <button class="nav-item" type="button" data-view="supplierMatching">供应商匹配</button>
+          <button class="nav-item" type="button" data-view="logistics">物流报价</button>
+
+          <div class="nav-section-title">系统管理</div>
+          <button class="nav-item" type="button" data-view="mvpReadiness">MVP 初版</button>
           <button class="nav-item" type="button" data-view="settings">配置中心</button>
         </nav>
 
@@ -37,12 +49,12 @@
       <div class="main-shell">
         <header class="topbar">
           <div>
-            <p class="eyebrow">Internal Operations Platform</p>
+            <p class="eyebrow">内部运营平台</p>
             <h1 id="viewTitle">总览</h1>
           </div>
           <div class="topbar-actions">
             <button class="ghost-button" id="copyReportButton" type="button">复制策略摘要</button>
-            <button class="primary-button" id="createDraftButton" type="button">生成上架草稿</button>
+            <button class="primary-button" id="createDraftButton" type="button">查看上架草稿</button>
           </div>
         </header>
 
@@ -73,11 +85,18 @@
           </section>
 
           <section id="dashboardView" class="view is-active"></section>
+          <section id="dataSourcesView" class="view"></section>
+          <section id="productsView" class="view"></section>
           <section id="opportunitiesView" class="view"></section>
           <section id="listingsView" class="view"></section>
+          <section id="fulfillmentView" class="view"></section>
           <section id="ordersView" class="view"></section>
           <section id="suppliersView" class="view"></section>
+          <section id="financeView" class="view"></section>
+          <section id="supplierMatchingView" class="view"></section>
+          <section id="logisticsView" class="view"></section>
           <section id="reportsView" class="view"></section>
+          <section id="mvpReadinessView" class="view"></section>
           <section id="settingsView" class="view"></section>
         </main>
       </div>
