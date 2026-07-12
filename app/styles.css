@@ -475,6 +475,43 @@ h3 {
   background: var(--surface-soft);
 }
 
+.supplier-discovery-form {
+  grid-template-columns: minmax(140px, 0.7fr) minmax(180px, 1fr) minmax(110px, 0.55fr) minmax(110px, 0.55fr) minmax(110px, 0.5fr) auto;
+}
+
+.supplier-candidate-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.supplier-candidate-card {
+  display: grid;
+  grid-template-columns: 128px minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-soft);
+}
+
+.supplier-candidate-card img {
+  width: 128px;
+  height: 128px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: white;
+}
+
+.supplier-candidate-card h3 {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  line-height: 1.4;
+}
+
 .source-card-header {
   display: flex;
   justify-content: space-between;
@@ -1161,6 +1198,8 @@ tbody tr:hover {
   .automation-grid,
   .discovery-form,
   .discovery-grid,
+  .supplier-discovery-form,
+  .supplier-candidate-grid,
   .detail-row-grid,
   .checklist-grid,
   .readiness-summary,
@@ -1176,6 +1215,15 @@ tbody tr:hover {
 
   .guide-actions {
     justify-content: flex-start;
+  }
+
+  .supplier-candidate-card {
+    grid-template-columns: 96px minmax(0, 1fr);
+  }
+
+  .supplier-candidate-card img {
+    width: 96px;
+    height: 96px;
   }
 }
 

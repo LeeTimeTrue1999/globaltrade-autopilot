@@ -33,6 +33,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 | Field mapping | 数据导入 | 已完成 | Source columns map into canonical fields before confirmation. |
 | Product management | 商品管理 | 已完成 | Shows market product data and import entry points. |
 | Supplier management | 供应商管理 / 供应商匹配 | 已完成 | Supplier data is manageable and can be manually matched to products. |
+| Yiwugo supplier discovery | 供应商管理 | 已完成 | Local dev server can query Yiwugo public product list data, rank low-price candidates, and add manually confirmed items into the supplier product pool. |
 | Logistics quote management | 物流报价 | 已完成 | Local logistics quotes can be created and used to refresh product costs. |
 | Opportunity discovery | 机会池 | 部分完成 | Link/category discovery exists, but signals are locally simulated until real parsing/API data is connected. |
 | Opportunity detail review | 机会池 | 已完成 | Shows market data, supplier data, score factors, cost breakdown, and research source notes. |
@@ -56,6 +57,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 - Target platforms and countries to test first.
 - Product rows with platform, country, category, title, local title, price, currency, rating, review count, sales signal, trend, competition level, and source URL if available.
 - Supplier rows with market product id, supplier name, source platform, purchase price, MOQ, dispatch days, supplier rating, monthly sales, dropship support, and backup supplier.
+- Supplier discovery rules for Yiwugo: category, keyword, max purchase price, max MOQ, and candidate count.
 - Logistics rows with provider, route, destination country, weight or parcel assumptions, cost in CNY, and delivery days.
 - Order rows with platform, country, SKU/product, amount in CNY, profit in CNY, status, and owner.
 - Cost assumptions for platform fee, payment fee, ad cost, return loss, packaging cost, FX rates, and minimum margin threshold.
@@ -71,7 +73,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 
 ## Open MVP Gaps
 
-1. Real URL/platform parsing is not connected.
+1. Real marketplace URL/platform parsing is not connected. Yiwugo public list discovery exists, but other platforms such as 1688 still need manual upload, logged-in browser assistance, or API access.
 2. Translation and localization are visible but not yet editable as a proper workflow.
 3. Cost templates need platform/country/category provenance so every fee can show its source.
 4. KPI weekly review needs clearer metrics and test outcome tracking.

@@ -121,6 +121,7 @@ const state = {
   selectedId: null,
   selectedDraftId: null,
   discoveryCandidates: [],
+  yiwugoCandidates: [],
   logisticsRates: [],
   shipments: [],
   dataSources: clone(DEFAULT_DATA_SOURCES),
@@ -379,6 +380,7 @@ function buildWorkspaceSnapshot() {
     savedAt: new Date().toISOString(),
     config,
     discoveryCandidates: state.discoveryCandidates,
+    yiwugoCandidates: state.yiwugoCandidates,
     marketProducts,
     supplierProducts,
     logisticsRates: state.logisticsRates,
@@ -401,6 +403,7 @@ function buildWorkspaceSnapshot() {
 function applyWorkspaceSnapshot(saved) {
   if (saved.config) replaceObject(config, saved.config);
   state.discoveryCandidates = Array.isArray(saved.discoveryCandidates) ? saved.discoveryCandidates : [];
+  state.yiwugoCandidates = Array.isArray(saved.yiwugoCandidates) ? saved.yiwugoCandidates : [];
   if (Array.isArray(saved.marketProducts)) replaceArray(marketProducts, saved.marketProducts);
   if (Array.isArray(saved.supplierProducts)) replaceArray(supplierProducts, saved.supplierProducts);
   if (Array.isArray(saved.listingDrafts)) replaceArray(listingDrafts, saved.listingDrafts);
@@ -817,7 +820,9 @@ function auditActionLabel(action) {
     "data_source.owner_updated": "更新数据源负责人",
     "discovery.generated": "生成调研候选",
     "discovery.added_to_pool": "加入商品池",
-    "discovery.listing_draft_created": "生成上架草稿"
+    "discovery.listing_draft_created": "生成上架草稿",
+    "yiwugo.discovery.generated": "义乌购自动找货",
+    "yiwugo.candidate_added": "加入义乌购供应商候选"
   };
   return labels[action] || action;
 }
@@ -830,6 +835,7 @@ function auditDetailLabel(entry) {
   if (detail.provider || detail.route) return `报价：${[detail.provider, detail.route].filter(Boolean).join(" / ")}`;
   if (detail.orderId) return `订单：${detail.orderId}`;
   if (detail.title) return `商品：${detail.title}`;
+  if (detail.query) return `关键词：${detail.query}`;
   return "详情已记录在本地工作区";
 }
 
@@ -2416,6 +2422,151 @@ function refreshTrackingStatus() {
   render();
 }
 
+async function runYiwugoDiscovery(form) {
+  const formData = new FormData(form);
+  const params = new URLSearchParams({
+    category: String(formData.get("yiwugoCategory") || "artificial_flower"),
+    q: String(formData.get("yiwugoKeyword") || "").trim(),
+    maxPrice: String(formData.get("yiwugoMaxPrice") || ""),
+    maxMoq: String(formData.get("yiwugoMaxMoq") || ""),
+    pageSize: String(formData.get("yiwugoPageSize") || "20")
+  });
+  const result = await fetch(`/api/yiwugo/discover?${params.toString()}`).then((response) => {
+    if (!response.ok) throw new Error("义乌购找货接口暂时不可用");
+    return response.json();
+  });
+  if (result.error) throw new Error(result.error);
+  state.yiwugoCandidates = result.candidates || [];
+  logAction("yiwugo.discovery.generated", {
+    query: result.query || result.category,
+    count: state.yiwugoCandidates.length,
+    category: result.category
+  });
+  saveWorkspaceState();
+  render();
+}
+
+function addYiwugoCandidateToSuppliers(candidateId) {
+  const candidate = state.yiwugoCandidates.find((item) => item.id === candidateId);
+  if (!candidate) return;
+  const existing = supplierProducts.find((item) => item.sourceUrl === candidate.sourceUrl);
+  if (existing) return;
+  supplierProducts.unshift({
+    id: `sp-ywg-${Date.now()}`,
+    marketProductId: "",
+    sourcePlatform: "义乌购",
+    supplierName: candidate.shopName,
+    title: candidate.title,
+    purchasePriceCny: candidate.priceCny,
+    moq: candidate.moq || 1,
+    dispatchDays: candidate.deliveryPromise || 3,
+    supplierRating: Math.min(95, 55 + candidate.credit * 10 + Math.min(20, Math.log10(candidate.saleNumber + 1) * 4)),
+    monthlySales: candidate.saleNumber || candidate.dealQuantity || 0,
+    supportsDropship: Boolean(candidate.onlineOrderFlag),
+    backupSupplier: "待人工补充",
+    sourceUrl: candidate.sourceUrl,
+    imageUrl: candidate.imageUrl,
+    sourceCategory: candidate.category,
+    parseConfidence: candidate.confidence,
+    yiwugoProductId: candidate.id
+  });
+  logAction("yiwugo.candidate_added", { productId: candidate.id, title: candidate.title, supplierName: candidate.shopName });
+  saveWorkspaceState();
+  render();
+}
+
+function renderYiwugoDiscoveryPanel() {
+  const candidates = state.yiwugoCandidates || [];
+  return `
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">真实货源发现</p>
+          <h2>义乌购自动找低价候选</h2>
+          <p class="muted">从义乌购公开列表接口获取商品，按低价、低起批量、销量、发货承诺和店铺信用排序。只加入供应商池，不自动采购。</p>
+        </div>
+      </div>
+      <form class="panel-body discovery-form supplier-discovery-form" data-yiwugo-form>
+        <label>
+          类目
+          <select name="yiwugoCategory">
+            <option value="artificial_flower">仿真花/绿植</option>
+            <option value="toys">玩具</option>
+            <option value="hair_accessories">头饰</option>
+            <option value="jewelry">珠宝首饰</option>
+            <option value="decorative_craft">装饰工艺</option>
+          </select>
+        </label>
+        <label>
+          关键词
+          <input name="yiwugoKeyword" type="text" placeholder="例如：盆栽、收纳、宠物">
+        </label>
+        <label>
+          最高采购价
+          <input name="yiwugoMaxPrice" type="number" min="0" step="0.1" value="30">
+        </label>
+        <label>
+          起批量上限
+          <input name="yiwugoMaxMoq" type="number" min="0" step="1" value="200">
+        </label>
+        <label>
+          拉取数量
+          <select name="yiwugoPageSize">
+            <option value="20">20</option>
+            <option value="40">40</option>
+            <option value="60">60</option>
+          </select>
+        </label>
+        <button class="primary-button" type="submit">开始找货</button>
+      </form>
+      <div class="panel-body discovery-note">
+        <span class="tag info">人工确认</span>
+        <p class="muted">MVP 只使用公开商品列表字段。手机号、联系人、登录后报价和即时聊天信息不会自动入库。</p>
+      </div>
+      ${
+        candidates.length > 0
+          ? `<div class="supplier-candidate-grid">
+              ${candidates
+                .slice(0, 12)
+                .map(
+                  (candidate) => `
+                    <article class="supplier-candidate-card">
+                      ${candidate.imageUrl ? `<img src="${h(candidate.imageUrl)}" alt="${h(candidate.title)}">` : ""}
+                      <div>
+                        <div class="card-row">
+                          <div>
+                            <h3>${h(candidate.title)}</h3>
+                            <p class="muted">${h(candidate.shopName)} · ${h(candidate.category)}</p>
+                          </div>
+                          <span class="score-badge">${h(candidate.opportunityScore)}</span>
+                        </div>
+                        <div class="tag-row">
+                          <span class="tag good">${h(candidate.priceText)}</span>
+                          <span class="tag">起批 ${h(candidate.moq)} ${h(candidate.metric)}</span>
+                          <span class="tag">销量 ${h(candidate.saleNumber)}</span>
+                          <span class="tag">发货 ${h(candidate.deliveryPromise || "待确认")} 天</span>
+                        </div>
+                        <div class="opportunity-card-data">
+                          <span>店铺信用 ${h(candidate.credit)}</span>
+                          <span>${candidate.onlineOrderFlag ? "支持线上下单" : "线上下单待确认"}</span>
+                          <span>数据源 ${h(candidate.confidence)}</span>
+                          <span><a href="${h(candidate.sourceUrl)}" target="_blank" rel="noreferrer">打开原链接</a></span>
+                        </div>
+                        <div class="detail-actions">
+                          <button class="small-button" type="button" data-add-yiwugo="${h(candidate.id)}">加入供应商池</button>
+                        </div>
+                      </div>
+                    </article>
+                  `
+                )
+                .join("")}
+            </div>`
+          : `<div class="panel-body"><p class="muted">还没有义乌购候选。设置类目和筛选条件后点击“开始找货”。</p></div>`
+      }
+    </section>
+  `;
+}
+
 function renderSuppliers() {
   elements.views.suppliers.innerHTML = `
     ${pageGuide(
@@ -2432,6 +2583,7 @@ function renderSuppliers() {
       ${metricCard("已绑定商品", supplierProducts.filter((supplier) => marketProducts.some((product) => product.id === supplier.marketProductId)).length, "已匹配到市场商品")}
       ${metricCard("支持一件代发", supplierProducts.filter((supplier) => supplier.supportsDropship).length, "可直接履约的供应商商品")}
     </div>
+    ${renderYiwugoDiscoveryPanel()}
     <section class="table-panel">
       <div class="panel-header">
         <div>
@@ -2968,6 +3120,7 @@ function resetLocalWorkspace() {
   replaceArray(listingDrafts, INITIAL_WORKSPACE.listingDrafts);
   replaceArray(orders, INITIAL_WORKSPACE.orders);
   state.discoveryCandidates = [];
+  state.yiwugoCandidates = [];
   state.logisticsRates = [];
   state.shipments = buildDefaultShipments();
   state.dataSources = clone(DEFAULT_DATA_SOURCES);
@@ -3252,6 +3405,23 @@ function bindDynamicEvents() {
 
   document.querySelectorAll("[data-draft-discovery]").forEach((button) => {
     button.addEventListener("click", () => createListingDraftFromDiscovery(button.dataset.draftDiscovery));
+  });
+
+  document.querySelectorAll("[data-yiwugo-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      runYiwugoDiscovery(form).catch((error) => {
+        state.yiwugoCandidates = [];
+        logAction("yiwugo.discovery.generated", { query: "失败", error: error.message });
+        saveWorkspaceState();
+        render();
+        window.alert(error.message || "义乌购找货失败");
+      });
+    });
+  });
+
+  document.querySelectorAll("[data-add-yiwugo]").forEach((button) => {
+    button.addEventListener("click", () => addYiwugoCandidateToSuppliers(button.dataset.addYiwugo));
   });
 
   document.querySelectorAll("[data-export-backup]").forEach((button) => {
