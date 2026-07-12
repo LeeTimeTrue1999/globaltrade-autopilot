@@ -476,7 +476,7 @@ h3 {
 }
 
 .supplier-discovery-form {
-  grid-template-columns: minmax(140px, 0.7fr) minmax(180px, 1fr) minmax(110px, 0.55fr) minmax(110px, 0.55fr) minmax(110px, 0.5fr) auto;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 
 .supplier-candidate-grid {

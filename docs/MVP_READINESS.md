@@ -34,6 +34,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 | Product management | 商品管理 | 已完成 | Shows market product data and import entry points. |
 | Supplier management | 供应商管理 / 供应商匹配 | 已完成 | Supplier data is manageable and can be manually matched to products. |
 | Yiwugo supplier discovery | 供应商管理 | 已完成 | Local dev server can query Yiwugo public product list data, rank low-price candidates, and add manually confirmed items into the supplier product pool. |
+| Supplier discovery refresh rules | 供应商管理 | 已完成 | Source configs store readable fields, blocked fields, refresh cadence, overwrite policy, last fetch time, next refresh suggestion, and source snapshots for confirmed supplier rows. |
 | Logistics quote management | 物流报价 | 已完成 | Local logistics quotes can be created and used to refresh product costs. |
 | Opportunity discovery | 机会池 | 部分完成 | Link/category discovery exists, but signals are locally simulated until real parsing/API data is connected. |
 | Opportunity detail review | 机会池 | 已完成 | Shows market data, supplier data, score factors, cost breakdown, and research source notes. |
@@ -58,6 +59,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 - Product rows with platform, country, category, title, local title, price, currency, rating, review count, sales signal, trend, competition level, and source URL if available.
 - Supplier rows with market product id, supplier name, source platform, purchase price, MOQ, dispatch days, supplier rating, monthly sales, dropship support, and backup supplier.
 - Supplier discovery rules for Yiwugo: category, keyword, max purchase price, max MOQ, and candidate count.
+- Supplier discovery update rules: source mode, refresh cadence, overwrite policy, fetched-at timestamp, next refresh suggestion, and source snapshot for change review.
 - Logistics rows with provider, route, destination country, weight or parcel assumptions, cost in CNY, and delivery days.
 - Order rows with platform, country, SKU/product, amount in CNY, profit in CNY, status, and owner.
 - Cost assumptions for platform fee, payment fee, ad cost, return loss, packaging cost, FX rates, and minimum margin threshold.
@@ -76,10 +78,11 @@ If a feature is only documented but not visible in the frontend, it should appea
 1. Real marketplace URL/platform parsing is not connected. Yiwugo public list discovery exists, but other platforms such as 1688 still need manual upload, logged-in browser assistance, or API access.
 2. Translation and localization are visible but not yet editable as a proper workflow.
 3. Cost templates need platform/country/category provenance so every fee can show its source.
-4. KPI weekly review needs clearer metrics and test outcome tracking.
-5. Strategy recommendations need an approval/action log.
-6. Shipment tracking is simulated; real carrier/platform sync is deferred.
-7. Multi-user permissions and backend persistence are intentionally out of scope for the local MVP.
+4. Supplier discovery refresh is manual in the local MVP; background schedules need a hosted job runner later.
+5. KPI weekly review needs clearer metrics and test outcome tracking.
+6. Strategy recommendations need an approval/action log.
+7. Shipment tracking is simulated; real carrier/platform sync is deferred.
+8. Multi-user permissions and backend persistence are intentionally out of scope for the local MVP.
 
 ## Operating Rule
 

@@ -122,6 +122,7 @@ const state = {
   selectedDraftId: null,
   discoveryCandidates: [],
   yiwugoCandidates: [],
+  supplierDiscoveryConfigs: {},
   logisticsRates: [],
   shipments: [],
   dataSources: clone(DEFAULT_DATA_SOURCES),
@@ -183,6 +184,45 @@ const importLabels = {
 
 const shipmentStatuses = ["待发货", "已创建运单", "已发货", "运输中", "派送中", "已签收", "异常"];
 const defaultCarriers = ["YunExpress", "4PX", "菜鸟国际", "顺丰国际", "平台物流"];
+const DEFAULT_SUPPLIER_DISCOVERY_CONFIGS = {
+  yiwugo: {
+    source: "义乌购",
+    mode: "public_list",
+    status: "active",
+    refreshCadenceHours: 24,
+    overwritePolicy: "manual_review",
+    autoAddToSupplierPool: false,
+    allowedFields: "标题、图片、店铺、价格、MOQ、销量、发货承诺、店铺信用、原链接",
+    blockedFields: "手机号、联系人、登录后报价、即时聊天、私密库存",
+    lastFetchedAt: "",
+    nextRefreshAt: ""
+  },
+  "1688": {
+    source: "1688",
+    mode: "link_register",
+    status: "manual_required",
+    refreshCadenceHours: 0,
+    overwritePolicy: "manual_review",
+    autoAddToSupplierPool: false,
+    allowedFields: "商品链接、offerId、人工补充采购价/MOQ/规格/发货信息、表格导入字段",
+    blockedFields: "验证码后数据、登录后报价、旺旺聊天、强风控页面",
+    lastFetchedAt: "",
+    nextRefreshAt: ""
+  },
+  manual_upload: {
+    source: "手工上传",
+    mode: "csv_excel",
+    status: "active",
+    refreshCadenceHours: 0,
+    overwritePolicy: "batch_preview",
+    autoAddToSupplierPool: false,
+    allowedFields: "CSV/Excel 模板中的标准供应商商品字段",
+    blockedFields: "未映射字段默认不入库",
+    lastFetchedAt: "",
+    nextRefreshAt: ""
+  }
+};
+state.supplierDiscoveryConfigs = clone(DEFAULT_SUPPLIER_DISCOVERY_CONFIGS);
 const mvpReadinessItems = [
   {
     area: "本地工作区存储",
@@ -381,6 +421,7 @@ function buildWorkspaceSnapshot() {
     config,
     discoveryCandidates: state.discoveryCandidates,
     yiwugoCandidates: state.yiwugoCandidates,
+    supplierDiscoveryConfigs: state.supplierDiscoveryConfigs,
     marketProducts,
     supplierProducts,
     logisticsRates: state.logisticsRates,
@@ -404,6 +445,10 @@ function applyWorkspaceSnapshot(saved) {
   if (saved.config) replaceObject(config, saved.config);
   state.discoveryCandidates = Array.isArray(saved.discoveryCandidates) ? saved.discoveryCandidates : [];
   state.yiwugoCandidates = Array.isArray(saved.yiwugoCandidates) ? saved.yiwugoCandidates : [];
+  state.supplierDiscoveryConfigs = {
+    ...clone(DEFAULT_SUPPLIER_DISCOVERY_CONFIGS),
+    ...(saved.supplierDiscoveryConfigs || {})
+  };
   if (Array.isArray(saved.marketProducts)) replaceArray(marketProducts, saved.marketProducts);
   if (Array.isArray(saved.supplierProducts)) replaceArray(supplierProducts, saved.supplierProducts);
   if (Array.isArray(saved.listingDrafts)) replaceArray(listingDrafts, saved.listingDrafts);
@@ -822,7 +867,8 @@ function auditActionLabel(action) {
     "discovery.added_to_pool": "加入商品池",
     "discovery.listing_draft_created": "生成上架草稿",
     "yiwugo.discovery.generated": "义乌购自动找货",
-    "yiwugo.candidate_added": "加入义乌购供应商候选"
+    "yiwugo.candidate_added": "加入义乌购供应商候选",
+    "supplier_discovery.config_updated": "更新供应商发现规则"
   };
   return labels[action] || action;
 }
@@ -2270,6 +2316,50 @@ function renderCarrierOptions(selected) {
   return carriers.map((carrier) => `<option value="${h(carrier)}" ${selected === carrier ? "selected" : ""}>${h(carrier)}</option>`).join("");
 }
 
+function addHoursToIso(hours, base = new Date()) {
+  const value = Number(hours || 0);
+  if (!value) return "";
+  return new Date(base.getTime() + value * 60 * 60 * 1000).toISOString();
+}
+
+function formatDateTime(value) {
+  if (!value) return "未设置";
+  return new Date(value).toLocaleString();
+}
+
+function sourceStatusText(status) {
+  const labels = {
+    active: "可用",
+    manual_required: "需人工确认",
+    paused: "暂停"
+  };
+  return labels[status] || status;
+}
+
+function overwritePolicyText(policy) {
+  const labels = {
+    manual_review: "抓取后人工确认覆盖",
+    never_overwrite_manual: "不覆盖人工修改",
+    batch_preview: "批量预览后确认"
+  };
+  return labels[policy] || policy;
+}
+
+function updateSupplierDiscoveryConfig(sourceKey, key, value) {
+  const configItem = state.supplierDiscoveryConfigs[sourceKey];
+  if (!configItem) return;
+  if (key === "refreshCadenceHours") {
+    configItem[key] = Math.max(0, Number(value || 0));
+  } else if (key === "autoAddToSupplierPool") {
+    configItem[key] = value === "true";
+  } else {
+    configItem[key] = value;
+  }
+  logAction("supplier_discovery.config_updated", { source: sourceKey, key, value: configItem[key] });
+  saveWorkspaceState();
+  render();
+}
+
 function renderShipmentTimeline(shipment) {
   const currentRank = statusRank(shipment.status);
   return `
@@ -2424,6 +2514,9 @@ function refreshTrackingStatus() {
 
 async function runYiwugoDiscovery(form) {
   const formData = new FormData(form);
+  const configItem = state.supplierDiscoveryConfigs.yiwugo;
+  configItem.refreshCadenceHours = Math.max(0, Number(formData.get("yiwugoRefreshHours") || configItem.refreshCadenceHours || 0));
+  configItem.overwritePolicy = String(formData.get("yiwugoOverwritePolicy") || configItem.overwritePolicy);
   const params = new URLSearchParams({
     category: String(formData.get("yiwugoCategory") || "artificial_flower"),
     q: String(formData.get("yiwugoKeyword") || "").trim(),
@@ -2436,11 +2529,26 @@ async function runYiwugoDiscovery(form) {
     return response.json();
   });
   if (result.error) throw new Error(result.error);
-  state.yiwugoCandidates = result.candidates || [];
+  const fetchedAt = result.fetchedAt || new Date().toISOString();
+  const nextRefreshAt = addHoursToIso(configItem.refreshCadenceHours, new Date(fetchedAt));
+  configItem.lastFetchedAt = fetchedAt;
+  configItem.nextRefreshAt = nextRefreshAt;
+  state.yiwugoCandidates = (result.candidates || []).map((candidate) => ({
+    ...candidate,
+    sourceKey: "yiwugo",
+    fetchedAt,
+    nextRefreshAt,
+    refreshCadenceHours: configItem.refreshCadenceHours,
+    overwritePolicy: configItem.overwritePolicy,
+    confirmationStatus: "候选待确认",
+    storageStatus: "未入库"
+  }));
   logAction("yiwugo.discovery.generated", {
     query: result.query || result.category,
     count: state.yiwugoCandidates.length,
-    category: result.category
+    category: result.category,
+    fetchedAt,
+    nextRefreshAt
   });
   saveWorkspaceState();
   render();
@@ -2468,8 +2576,24 @@ function addYiwugoCandidateToSuppliers(candidateId) {
     imageUrl: candidate.imageUrl,
     sourceCategory: candidate.category,
     parseConfidence: candidate.confidence,
-    yiwugoProductId: candidate.id
+    yiwugoProductId: candidate.id,
+    sourceFetchedAt: candidate.fetchedAt,
+    nextRefreshAt: candidate.nextRefreshAt,
+    refreshCadenceHours: candidate.refreshCadenceHours,
+    overwritePolicy: candidate.overwritePolicy,
+    dataStatus: "已入库，后续更新需人工确认",
+    sourceSnapshot: {
+      priceCny: candidate.priceCny,
+      maxPriceCny: candidate.maxPriceCny,
+      moq: candidate.moq,
+      saleNumber: candidate.saleNumber,
+      deliveryPromise: candidate.deliveryPromise,
+      credit: candidate.credit,
+      opportunityScore: candidate.opportunityScore
+    }
   });
+  candidate.storageStatus = "已加入供应商池";
+  candidate.confirmationStatus = "已人工确认";
   logAction("yiwugo.candidate_added", { productId: candidate.id, title: candidate.title, supplierName: candidate.shopName });
   saveWorkspaceState();
   render();
@@ -2477,16 +2601,49 @@ function addYiwugoCandidateToSuppliers(candidateId) {
 
 function renderYiwugoDiscoveryPanel() {
   const candidates = state.yiwugoCandidates || [];
+  const yiwugoConfig = state.supplierDiscoveryConfigs.yiwugo;
+  const sourceCards = Object.entries(state.supplierDiscoveryConfigs)
+    .map(
+      ([key, item]) => `
+        <article class="source-card">
+          <div class="source-card-header">
+            <div>
+              <h3>${h(item.source)}</h3>
+              <p class="muted">${h(item.mode)} · ${h(overwritePolicyText(item.overwritePolicy))}</p>
+            </div>
+            <span class="tag ${item.status === "active" ? "good" : "warning"}">${h(sourceStatusText(item.status))}</span>
+          </div>
+          <p class="muted">可读字段：${h(item.allowedFields)}</p>
+          <p class="muted">不入库字段：${h(item.blockedFields)}</p>
+          <div class="opportunity-card-data">
+            <span>刷新周期 ${item.refreshCadenceHours ? `${item.refreshCadenceHours} 小时` : "手动"}</span>
+            <span>上次抓取 ${h(formatDateTime(item.lastFetchedAt))}</span>
+            <span>下次建议 ${h(formatDateTime(item.nextRefreshAt))}</span>
+            <span>${key === "1688" ? "链接登记/人工补字段" : key === "manual_upload" ? "批量预览确认" : "公开列表接口"}</span>
+          </div>
+        </article>
+      `
+    )
+    .join("");
   return `
     <section class="panel">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">真实货源发现</p>
-          <h2>义乌购自动找低价候选</h2>
-          <p class="muted">从义乌购公开列表接口获取商品，按低价、低起批量、销量、发货承诺和店铺信用排序。只加入供应商池，不自动采购。</p>
+          <p class="eyebrow">供应商发现</p>
+          <h2>多来源找货与更新规则</h2>
+          <p class="muted">统一管理义乌购、1688、手工上传等来源。候选数据先进入待确认区，加入供应商池后保留来源快照；后续刷新只生成变更，不静默覆盖人工字段。</p>
         </div>
       </div>
+      <div class="panel-body source-grid">${sourceCards}</div>
       <form class="panel-body discovery-form supplier-discovery-form" data-yiwugo-form>
+        <label>
+          来源
+          <select name="supplierDiscoverySource">
+            <option value="yiwugo">义乌购：自动找货</option>
+            <option value="1688" disabled>1688：链接登记/人工补字段</option>
+            <option value="manual_upload" disabled>手工上传：去数据导入</option>
+          </select>
+        </label>
         <label>
           类目
           <select name="yiwugoCategory">
@@ -2517,11 +2674,35 @@ function renderYiwugoDiscoveryPanel() {
             <option value="60">60</option>
           </select>
         </label>
+        <label>
+          刷新周期
+          <select name="yiwugoRefreshHours">
+            ${[0, 6, 12, 24, 48, 72]
+              .map(
+                (hours) =>
+                  `<option value="${hours}" ${Number(yiwugoConfig.refreshCadenceHours) === hours ? "selected" : ""}>${
+                    hours ? `${hours} 小时` : "手动"
+                  }</option>`
+              )
+              .join("")}
+          </select>
+        </label>
+        <label>
+          更新策略
+          <select name="yiwugoOverwritePolicy">
+            ${["manual_review", "never_overwrite_manual"]
+              .map(
+                (policy) =>
+                  `<option value="${policy}" ${yiwugoConfig.overwritePolicy === policy ? "selected" : ""}>${overwritePolicyText(policy)}</option>`
+              )
+              .join("")}
+          </select>
+        </label>
         <button class="primary-button" type="submit">开始找货</button>
       </form>
       <div class="panel-body discovery-note">
         <span class="tag info">人工确认</span>
-        <p class="muted">MVP 只使用公开商品列表字段。手机号、联系人、登录后报价和即时聊天信息不会自动入库。</p>
+        <p class="muted">MVP 只使用公开商品列表字段。手机号、联系人、登录后报价和即时聊天信息不会自动入库。1688 当前作为链接登记和人工补字段来源，后续可接表格导入或 API。</p>
       </div>
       ${
         candidates.length > 0
@@ -2549,6 +2730,9 @@ function renderYiwugoDiscoveryPanel() {
                         <div class="opportunity-card-data">
                           <span>店铺信用 ${h(candidate.credit)}</span>
                           <span>${candidate.onlineOrderFlag ? "支持线上下单" : "线上下单待确认"}</span>
+                          <span>抓取 ${h(formatDateTime(candidate.fetchedAt))}</span>
+                          <span>下次建议 ${h(formatDateTime(candidate.nextRefreshAt))}</span>
+                          <span>状态 ${h(candidate.storageStatus || "未入库")}</span>
                           <span>数据源 ${h(candidate.confidence)}</span>
                           <span><a href="${h(candidate.sourceUrl)}" target="_blank" rel="noreferrer">打开原链接</a></span>
                         </div>
@@ -2610,7 +2794,13 @@ function renderSuppliers() {
             .map(
               (supplier) => `
                 <tr>
-                  <td>${supplier.supplierName}<br><span class="muted">${supplier.sourcePlatform}</span></td>
+                  <td>${supplier.supplierName}<br><span class="muted">${supplier.sourcePlatform}</span>${
+                    supplier.sourceFetchedAt
+                      ? `<br><span class="muted">抓取 ${h(formatDateTime(supplier.sourceFetchedAt))}</span><br><span class="muted">${h(
+                          overwritePolicyText(supplier.overwritePolicy)
+                        )}</span>`
+                      : ""
+                  }</td>
                   <td>${supplier.title}</td>
                   <td>${money(supplier.purchasePriceCny)}</td>
                   <td>${supplier.moq}</td>
