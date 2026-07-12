@@ -324,6 +324,15 @@ const mvpReadinessItems = [
   }
 ];
 
+mvpReadinessItems.splice(5, 0, {
+  area: "机会证据与补数",
+  surface: "机会池",
+  status: "部分完成",
+  priority: "P0",
+  note:
+    "机会详情已显示目标国售价依据、广告测算、重量体积缺口、物流成本依据、供应商备选和三档利润场景；真实竞品、广告、重量和路线报价仍需通过导入或后续适配器补齐。"
+});
+
 function statusRank(status) {
   const rank = {
     待发货: 0,
@@ -1633,6 +1642,8 @@ function detailPanel(opportunity) {
           <div class="data-cell"><span>备选供应商</span><strong>${supplierProduct.backupSupplier}</strong></div>
         </div>
       </section>
+
+      ${renderOpportunityEvidence(opportunity)}
     </div>
   `;
 }
@@ -1677,6 +1688,176 @@ function miniTable(rows) {
         </tbody>
       </table>
     </div>
+  `;
+}
+
+function numberValue(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+function estimateTargetPriceBand(opportunity) {
+  const { marketProduct, cost } = opportunity;
+  const salePriceCny = numberValue(cost.salePriceCny);
+  const competitorLow = marketProduct.competitorLowCny || Math.max(salePriceCny * 0.88, 0);
+  const competitorMid = marketProduct.competitorMidCny || salePriceCny;
+  const competitorHigh = marketProduct.competitorHighCny || salePriceCny * 1.16;
+  const source = marketProduct.competitorLowCny
+    ? "已录入竞品价格带"
+    : "暂按市场商品售价折算，待接入竞品价格";
+
+  return {
+    low: competitorLow,
+    mid: competitorMid,
+    high: competitorHigh,
+    source
+  };
+}
+
+function profitScenarioRows(opportunity) {
+  const { marketProduct, supplierProduct, cost } = opportunity;
+  const baseSale = numberValue(cost.salePriceCny);
+  const baseLogistics = numberValue(marketProduct.logisticsCostCny);
+  const purchase = numberValue(supplierProduct.purchasePriceCny);
+  const baseFees =
+    numberValue(config.packagingCostCny) +
+    numberValue(cost.platformFee) +
+    numberValue(cost.paymentFee) +
+    numberValue(cost.returnLoss);
+  const rows = [
+    {
+      name: "保守",
+      salePrice: baseSale * 0.92,
+      logistics: baseLogistics * 1.15,
+      adRate: config.adCostRate + 0.04,
+      note: "售价下探、运费上浮、广告更贵"
+    },
+    {
+      name: "基准",
+      salePrice: baseSale,
+      logistics: baseLogistics,
+      adRate: config.adCostRate,
+      note: "沿用当前机会池测算"
+    },
+    {
+      name: "乐观",
+      salePrice: baseSale * 1.08,
+      logistics: baseLogistics * 0.95,
+      adRate: Math.max(config.adCostRate - 0.02, 0),
+      note: "售价更好、广告效率更高"
+    }
+  ];
+
+  return rows.map((row) => {
+    const adCost = row.salePrice * row.adRate;
+    const totalCost = purchase + row.logistics + baseFees + adCost;
+    const profit = row.salePrice - totalCost;
+    const margin = row.salePrice <= 0 ? 0 : profit / row.salePrice;
+    return [row.name, money(row.salePrice), money(row.logistics), money(adCost), money(profit), percent(margin), row.note];
+  });
+}
+
+function opportunityEvidenceChecks(opportunity, priceBand) {
+  const { marketProduct, supplierProduct, cost } = opportunity;
+  const hasCompetitorBand = Boolean(marketProduct.competitorLowCny || marketProduct.competitorMidCny || marketProduct.competitorHighCny);
+  const weightKg = marketProduct.weightKg || supplierProduct.weightKg || supplierProduct.sourceSnapshot?.weightKg;
+  const dimensions = marketProduct.dimensions || supplierProduct.dimensions || supplierProduct.sourceSnapshot?.dimensions;
+  const hasLogistics = numberValue(marketProduct.logisticsCostCny) > 0;
+  const hasAdAssumption = numberValue(config.adCostRate) > 0;
+  const hasSupplierBackup = Boolean(supplierProduct.backupSupplier);
+
+  return [
+    {
+      ok: hasCompetitorBand,
+      label: "目标国合理售价",
+      detail: hasCompetitorBand
+        ? `竞品价格带 ${money(priceBand.low)}-${money(priceBand.high)}`
+        : "当前只按市场商品售价折算，需要补竞品低/中/高价与平台链接"
+    },
+    {
+      ok: hasAdAssumption,
+      label: "广告投放假设",
+      detail: `当前按售价 ${percent(config.adCostRate)} 作为单单广告成本，约 ${money(cost.adCost)}`
+    },
+    {
+      ok: Boolean(weightKg || dimensions),
+      label: "重量体积",
+      detail: weightKg || dimensions ? `重量 ${weightKg || "待补"} kg，尺寸 ${dimensions || "待补"}` : "还缺实重、包装尺寸、材积重规则"
+    },
+    {
+      ok: hasLogistics,
+      label: "跨境运费",
+      detail: hasLogistics ? `当前机会使用 ${money(marketProduct.logisticsCostCny)} 作为单件物流成本` : "缺物流报价或重量段匹配"
+    },
+    {
+      ok: hasSupplierBackup,
+      label: "供应商备选",
+      detail: hasSupplierBackup ? `备选供应商：${supplierProduct.backupSupplier}` : "还缺第二供应商，价格和履约风险较难兜底"
+    },
+    {
+      ok: cost.grossMargin >= state.marginThreshold,
+      label: "利润空间",
+      detail: `当前毛利率 ${percent(cost.grossMargin)}，最低目标 ${percent(state.marginThreshold)}`
+    }
+  ];
+}
+
+function renderOpportunityEvidence(opportunity) {
+  const { marketProduct, cost } = opportunity;
+  const priceBand = estimateTargetPriceBand(opportunity);
+  const checks = opportunityEvidenceChecks(opportunity, priceBand);
+  const firstTestBudget = Math.max(numberValue(cost.adCost) * 20, numberValue(cost.salePriceCny) * 0.5);
+
+  return `
+      <section>
+        <h3>机会补数与投放测算</h3>
+        <p class="muted">这里把“这个机会为什么能做、还缺什么证据”拆开。当前 MVP 不默认抓到真实海外竞品、广告和物流全量数据，缺口会在下面标出来。</p>
+        ${detailRows([
+          ["目标国售价依据", `${money(priceBand.low)} / ${money(priceBand.mid)} / ${money(priceBand.high)}（低 / 中 / 高）`],
+          ["售价来源状态", priceBand.source],
+          ["广告测算", `按配置广告率 ${percent(config.adCostRate)}，单单约 ${money(cost.adCost)}，首轮 20 单测试预算约 ${money(firstTestBudget)}`],
+          ["物流测算", `${marketProduct.country} 单件成本 ${money(marketProduct.logisticsCostCny)}；后续应按重量段、渠道、时效更新`]
+        ])}
+        <div class="table-scroll">
+          <table class="compact-table">
+            <thead>
+              <tr>
+                <th>场景</th>
+                <th>售价</th>
+                <th>物流</th>
+                <th>广告</th>
+                <th>毛利</th>
+                <th>毛利率</th>
+                <th>说明</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${profitScenarioRows(opportunity)
+                .map(
+                  (row) => `
+                    <tr>
+                      ${row.map((cell) => `<td>${h(cell)}</td>`).join("")}
+                    </tr>
+                  `
+                )
+                .join("")}
+            </tbody>
+          </table>
+        </div>
+        <div class="checklist-grid">
+          ${checks
+            .map(
+              (item) => `
+                <div class="check-item ${item.ok ? "is-ok" : "is-missing"}">
+                  <span>${item.ok ? "已具备" : "待补数"}</span>
+                  <strong>${h(item.label)}</strong>
+                  <p>${h(item.detail)}</p>
+                </div>
+              `
+            )
+            .join("")}
+        </div>
+      </section>
   `;
 }
 
@@ -1765,6 +1946,8 @@ function opportunityReviewPanel(opportunity) {
   const totalFees = cost.platformFee + cost.paymentFee + cost.adCost + cost.returnLoss;
   return `
     <div class="detail-card detail-stack review-panel">
+      ${renderOpportunityEvidence(opportunity)}
+
       <section>
         <p class="eyebrow">决策摘要</p>
         <h2>${h(marketProduct.localTitle)}</h2>
