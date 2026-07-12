@@ -728,6 +728,13 @@ h3 {
   align-items: end;
 }
 
+.competitor-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 10px;
+  align-items: end;
+}
+
 .logistics-form label {
   display: grid;
   gap: 6px;
@@ -735,14 +742,41 @@ h3 {
   font-size: 12px;
 }
 
+.competitor-form label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .logistics-form input,
-.logistics-form select {
+.logistics-form select,
+.competitor-form input,
+.competitor-form select,
+.competitor-form textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: white;
   color: var(--text);
   padding: 9px 10px;
+}
+
+.competitor-form textarea {
+  min-height: 180px;
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.competitor-form .wide-field {
+  grid-column: 1 / -1;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
 }
 
 .opportunity-card {
@@ -1195,6 +1229,7 @@ tbody tr:hover {
   .source-controls,
   .mapping-grid,
   .logistics-form,
+  .competitor-form,
   .automation-grid,
   .discovery-form,
   .discovery-grid,

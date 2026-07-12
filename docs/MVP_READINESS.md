@@ -28,6 +28,8 @@ If a feature is only documented but not visible in the frontend, it should appea
 
 2026-07-12 supplement: opportunity review now includes an evidence/enrichment panel in the frontend. It shows target-country pricing basis, advertising assumptions, weight/dimension gaps, logistics cost basis, supplier backup status, and conservative/base/optimistic profit scenarios. These fields are visible for MVP review, but true competitor pricing, ad performance, product weight/dimensions, and route-specific logistics evidence still need imports or future adapters.
 
+2026-07-12 supplement: a local competitor price collection workbench is now visible in the frontend. It supports pasted visible marketplace results or CSV-like rows, extracts prices, previews samples, computes low/mid/high CNY price bands, and writes confirmed bands back to market products. It does not store cookies or run background scraping.
+
 | Area | Frontend status | MVP status | Notes |
 | --- | --- | --- | --- |
 | Local workspace storage | 配置中心 | 已完成 | Browser localStorage plus JSON backup/restore. |
@@ -63,6 +65,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 - Supplier discovery rules for Yiwugo: category, keyword, max purchase price, max MOQ, and candidate count.
 - Supplier discovery update rules: source mode, refresh cadence, overwrite policy, fetched-at timestamp, next refresh suggestion, and source snapshot for change review.
 - Opportunity enrichment rows with target-country competitor price band, ad assumption or campaign test budget, product weight/dimensions, logistics quote basis, supplier backup status, and profit scenario assumptions.
+- Competitor price snapshots from visible platform results or CSV-like rows: linked market product, source platform, country, keyword, source URL, sample title, sample price, currency, CNY conversion, and confirmation time.
 - Logistics rows with provider, route, destination country, weight or parcel assumptions, cost in CNY, and delivery days.
 - Order rows with platform, country, SKU/product, amount in CNY, profit in CNY, status, and owner.
 - Cost assumptions for platform fee, payment fee, ad cost, return loss, packaging cost, FX rates, and minimum margin threshold.
@@ -82,7 +85,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 1. Real marketplace URL/platform parsing is not connected. Yiwugo public list discovery exists, but other platforms such as 1688 still need manual upload, logged-in browser assistance, or API access.
 2. Translation and localization are visible but not yet editable as a proper workflow.
 3. Cost templates need platform/country/category provenance so every fee can show its source.
-4. Opportunity enrichment is visible, but true target-country competitor pricing, ad performance, product weight/dimensions, and route-specific logistics evidence still need imports or adapters.
+4. Competitor price collection is visible and local, but true automated logged-in browser extraction, official marketplace API access, and third-party market data providers still need compliance and account-access review.
 5. Supplier discovery refresh is manual in the local MVP; background schedules need a hosted job runner later.
 6. KPI weekly review needs clearer metrics and test outcome tracking.
 7. Strategy recommendations need an approval/action log.

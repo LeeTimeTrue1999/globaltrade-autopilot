@@ -73,6 +73,7 @@ const DEFAULT_DATA_SOURCES = [
 const managementViews = new Set([
   "dataSources",
   "products",
+  "competitors",
   "suppliers",
   "orders",
   "finance",
@@ -112,6 +113,23 @@ Object.assign(viewTitles, {
   settings: "配置中心"
 });
 
+Object.assign(viewTitles, {
+  competitors: "竞品采集"
+});
+
+function ensureCompetitorNav() {
+  const productNav = document.querySelector('[data-view="products"]');
+  if (!productNav || document.querySelector('[data-view="competitors"]')) return;
+  const button = document.createElement("button");
+  button.className = "nav-item";
+  button.type = "button";
+  button.dataset.view = "competitors";
+  button.textContent = "竞品采集";
+  productNav.insertAdjacentElement("afterend", button);
+}
+
+ensureCompetitorNav();
+
 const state = {
   view: "dashboard",
   country: "all",
@@ -122,6 +140,8 @@ const state = {
   selectedDraftId: null,
   discoveryCandidates: [],
   yiwugoCandidates: [],
+  competitorSnapshots: [],
+  competitorDraft: null,
   supplierDiscoveryConfigs: {},
   logisticsRates: [],
   shipments: [],
@@ -158,6 +178,7 @@ const elements = {
     dashboard: document.querySelector("#dashboardView"),
     dataSources: document.querySelector("#dataSourcesView"),
     products: document.querySelector("#productsView"),
+    competitors: document.querySelector("#competitorsView"),
     opportunities: document.querySelector("#opportunitiesView"),
     listings: document.querySelector("#listingsView"),
     fulfillment: document.querySelector("#fulfillmentView"),
@@ -430,6 +451,7 @@ function buildWorkspaceSnapshot() {
     config,
     discoveryCandidates: state.discoveryCandidates,
     yiwugoCandidates: state.yiwugoCandidates,
+    competitorSnapshots: state.competitorSnapshots,
     supplierDiscoveryConfigs: state.supplierDiscoveryConfigs,
     marketProducts,
     supplierProducts,
@@ -454,6 +476,8 @@ function applyWorkspaceSnapshot(saved) {
   if (saved.config) replaceObject(config, saved.config);
   state.discoveryCandidates = Array.isArray(saved.discoveryCandidates) ? saved.discoveryCandidates : [];
   state.yiwugoCandidates = Array.isArray(saved.yiwugoCandidates) ? saved.yiwugoCandidates : [];
+  state.competitorSnapshots = Array.isArray(saved.competitorSnapshots) ? saved.competitorSnapshots : [];
+  state.competitorDraft = null;
   state.supplierDiscoveryConfigs = {
     ...clone(DEFAULT_SUPPLIER_DISCOVERY_CONFIGS),
     ...(saved.supplierDiscoveryConfigs || {})
@@ -879,6 +903,10 @@ function auditActionLabel(action) {
     "yiwugo.candidate_added": "加入义乌购供应商候选",
     "supplier_discovery.config_updated": "更新供应商发现规则"
   };
+  Object.assign(labels, {
+    "competitor.previewed": "预览竞品价格",
+    "competitor.confirmed": "确认竞品价格带"
+  });
   return labels[action] || action;
 }
 
@@ -1209,6 +1237,151 @@ function pageGuide(title, body, actions = []) {
       }
     </section>
   `;
+}
+
+function currencyOptions(selectedCurrency) {
+  const currencies = Object.keys(config.fxRatesToCny);
+  return currencies
+    .map((currency) => `<option value="${h(currency)}" ${currency === selectedCurrency ? "selected" : ""}>${h(currency)}</option>`)
+    .join("");
+}
+
+function currencyFromText(text, fallback) {
+  if (/฿|THB/i.test(text)) return "THB";
+  if (/Rp|IDR/i.test(text)) return "IDR";
+  if (/₫|VND/i.test(text)) return "VND";
+  if (/₱|PHP/i.test(text)) return "PHP";
+  if (/₽|RUB/i.test(text)) return "RUB";
+  return fallback;
+}
+
+function normalizePriceNumber(raw) {
+  const cleaned = String(raw || "")
+    .replace(/[^\d.,]/g, "")
+    .replace(/,(?=\d{3}(\D|$))/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".");
+  const number = Number(cleaned);
+  return Number.isFinite(number) ? number : null;
+}
+
+function extractCompetitorSamples(rawText, fallbackCurrency) {
+  const lines = String(rawText || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const pricePattern =
+    /((?:฿|₽|₱|₫|Rp|THB|IDR|VND|PHP|RUB)\s*[\d.,]+|[\d.,]+\s*(?:THB|IDR|VND|PHP|RUB))/gi;
+  const urlPattern = /https?:\/\/\S+/i;
+  const samples = [];
+
+  lines.forEach((line, index) => {
+    const matches = Array.from(line.matchAll(pricePattern));
+    const match = matches[matches.length - 1];
+    if (!match) return;
+    const price = normalizePriceNumber(match[0]);
+    if (!price || price <= 0) return;
+    const currency = currencyFromText(match[0], fallbackCurrency);
+    const url = (line.match(urlPattern) || [])[0] || "";
+    const title = line
+      .replace(urlPattern, "")
+      .replace(match[0], "")
+      .replace(/\s{2,}/g, " ")
+      .trim()
+      .slice(0, 120);
+    samples.push({
+      id: `sample-${Date.now()}-${index}`,
+      title: title || `竞品 ${samples.length + 1}`,
+      price,
+      currency,
+      priceCny: Number((price * (config.fxRatesToCny[currency] || 1)).toFixed(2)),
+      url,
+      rawLine: line.slice(0, 260)
+    });
+  });
+
+  const unique = new Map();
+  samples.forEach((sample) => {
+    const key = `${sample.title}-${sample.price}-${sample.currency}`;
+    if (!unique.has(key)) unique.set(key, sample);
+  });
+  return [...unique.values()].slice(0, 40);
+}
+
+function priceBandFromSamples(samples) {
+  const prices = samples.map((sample) => sample.priceCny).filter((value) => Number.isFinite(value)).sort((a, b) => a - b);
+  if (prices.length === 0) return null;
+  const midIndex = Math.floor(prices.length / 2);
+  const median = prices.length % 2 === 0 ? (prices[midIndex - 1] + prices[midIndex]) / 2 : prices[midIndex];
+  return {
+    low: Number(prices[0].toFixed(2)),
+    mid: Number(median.toFixed(2)),
+    high: Number(prices[prices.length - 1].toFixed(2)),
+    count: prices.length
+  };
+}
+
+function previewCompetitorCollection(form) {
+  const formData = new FormData(form);
+  const productId = String(formData.get("marketProductId") || "");
+  const product = marketProducts.find((item) => item.id === productId);
+  const currency = String(formData.get("currency") || product?.currency || "THB");
+  const rawText = String(formData.get("rawText") || "");
+  const samples = extractCompetitorSamples(rawText, currency);
+  const band = priceBandFromSamples(samples);
+
+  state.competitorDraft = {
+    id: `competitor-draft-${Date.now()}`,
+    marketProductId: productId,
+    platform: String(formData.get("platform") || product?.platform || "").trim(),
+    country: String(formData.get("country") || product?.country || "").trim(),
+    keyword: String(formData.get("keyword") || product?.category || "").trim(),
+    sourceUrl: String(formData.get("sourceUrl") || "").trim(),
+    currency,
+    rawText: rawText.slice(0, 12000),
+    samples,
+    band,
+    createdAt: new Date().toISOString()
+  };
+  logAction("competitor.previewed", { title: product?.localTitle || productId, count: samples.length });
+  saveWorkspaceState();
+  render();
+}
+
+function confirmCompetitorCollection() {
+  const draft = state.competitorDraft;
+  if (!draft?.band || draft.samples.length === 0) return;
+  const product = marketProducts.find((item) => item.id === draft.marketProductId);
+  if (!product) return;
+  const snapshot = {
+    ...draft,
+    id: `competitor-${Date.now()}`,
+    confirmedAt: new Date().toISOString(),
+    rawText: draft.rawText.slice(0, 4000)
+  };
+  state.competitorSnapshots.unshift(snapshot);
+  state.competitorSnapshots = state.competitorSnapshots.slice(0, 80);
+  product.competitorLowCny = snapshot.band.low;
+  product.competitorMidCny = snapshot.band.mid;
+  product.competitorHighCny = snapshot.band.high;
+  product.competitorSampleCount = snapshot.samples.length;
+  product.competitorSnapshotId = snapshot.id;
+  product.competitorSourcePlatform = snapshot.platform;
+  product.competitorKeyword = snapshot.keyword;
+  product.competitorUpdatedAt = snapshot.confirmedAt;
+  product.competitorSourceUrl = snapshot.sourceUrl;
+  state.competitorDraft = null;
+  state.selectedId = `op-${product.id}`;
+  state.view = "opportunities";
+  logAction("competitor.confirmed", { title: product.localTitle, count: snapshot.samples.length });
+  saveWorkspaceState();
+  render();
+}
+
+function discardCompetitorDraft() {
+  state.competitorDraft = null;
+  saveWorkspaceState();
+  render();
 }
 
 function currencyForCountry(country) {
@@ -2420,6 +2593,170 @@ function renderProducts() {
   `;
 }
 
+function renderCompetitorCollection() {
+  const coveredProducts = marketProducts.filter((product) => product.competitorSnapshotId).length;
+  const draft = state.competitorDraft;
+  const selectedProduct = marketProducts[0] || {};
+  elements.views.competitors.innerHTML = `
+    ${pageGuide(
+      "竞品价格采集",
+      "这个页面用于把你在 Shopee、Lazada、TikTok Shop、Ozon 等平台当前可见的竞品价格转成价格带。MVP 不保存 cookie，不后台代替账号抓取；你复制搜索结果或表格文本，系统解析后由你确认入库。",
+      [
+        { view: "opportunities", label: "回到机会池" },
+        { view: "products", label: "查看商品" }
+      ]
+    )}
+    <div class="metrics-grid">
+      ${metricCard("已确认价格带", state.competitorSnapshots.length, "人工确认后进入本地竞品证据库")}
+      ${metricCard("覆盖商品", coveredProducts, "已回填竞品低/中/高价的市场商品")}
+      ${metricCard("待确认预览", draft?.samples?.length || 0, "当前解析出来但尚未入库的竞品样本")}
+      ${metricCard("Cookie 状态", "不保存", "只处理你粘贴或确认的可见页面数据")}
+    </div>
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">采集入口</p>
+          <h2>粘贴平台可见竞品结果</h2>
+        </div>
+      </div>
+      <form class="panel-body competitor-form" data-competitor-form>
+        <label>
+          关联商品
+          <select name="marketProductId">
+            ${marketProducts
+              .map((product) => `<option value="${h(product.id)}">${h(product.localTitle || product.title)} / ${h(product.country)} / ${h(product.platform)}</option>`)
+              .join("")}
+          </select>
+        </label>
+        <label>
+          平台
+          <input name="platform" type="text" value="${h(selectedProduct.platform || "Lazada")}" placeholder="Lazada / Shopee / TikTok Shop / Ozon">
+        </label>
+        <label>
+          国家
+          <input name="country" type="text" value="${h(selectedProduct.country || "")}" placeholder="泰国 / 印尼 / 越南">
+        </label>
+        <label>
+          币种
+          <select name="currency">${currencyOptions(selectedProduct.currency || "THB")}</select>
+        </label>
+        <label>
+          关键词 / 类目
+          <input name="keyword" type="text" value="${h(selectedProduct.category || "")}" placeholder="foldable kitchen storage rack">
+        </label>
+        <label>
+          来源页面
+          <input name="sourceUrl" type="url" placeholder="https://www.lazada.co.th/catalog/?q=...">
+        </label>
+        <label class="wide-field">
+          粘贴内容
+          <textarea name="rawText" rows="10" placeholder="从平台搜索结果页复制可见商品文本，或粘贴 CSV：标题, 价格, 链接。支持 ฿ / THB / Rp / IDR / ₫ / VND / ₱ / PHP / ₽ / RUB。"></textarea>
+        </label>
+        <div class="form-actions">
+          <button class="primary-button" type="submit">解析价格</button>
+          <button class="small-button" type="button" data-discard-competitor>清空预览</button>
+        </div>
+      </form>
+    </section>
+    ${
+      draft
+        ? `<section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">待确认</p>
+                <h2>竞品价格带预览</h2>
+              </div>
+              <div class="tag-row">
+                <span class="tag ${draft.band ? "good" : "warning"}">${draft.samples.length} 个样本</span>
+                ${draft.band ? `<span class="tag info">${money(draft.band.low)} / ${money(draft.band.mid)} / ${money(draft.band.high)}</span>` : ""}
+              </div>
+            </div>
+            <div class="panel-body detail-stack">
+              ${
+                draft.band
+                  ? detailRows([
+                      ["低价 / 中位 / 高价", `${money(draft.band.low)} / ${money(draft.band.mid)} / ${money(draft.band.high)}`],
+                      ["来源", `${draft.platform || "未标注"} / ${draft.country || "未标注"} / ${draft.keyword || "未标注"}`],
+                      ["样本数", draft.samples.length],
+                      ["确认后动作", "写入关联商品，并更新机会池目标国售价依据"]
+                    ])
+                  : `<div class="message-list warning"><p>没有解析到有效价格。请确认粘贴内容里包含价格符号或币种，例如 ฿299、THB 299、Rp 120000。</p></div>`
+              }
+              ${
+                draft.samples.length > 0
+                  ? `<div class="table-scroll">
+                      <table class="compact-table">
+                        <thead><tr><th>标题</th><th>价格</th><th>人民币折算</th><th>链接</th></tr></thead>
+                        <tbody>
+                          ${draft.samples
+                            .map(
+                              (sample) => `
+                                <tr>
+                                  <td class="wide-note">${h(sample.title)}</td>
+                                  <td>${h(sample.price)} ${h(sample.currency)}</td>
+                                  <td>${money(sample.priceCny)}</td>
+                                  <td class="wide-note">${sample.url ? h(sample.url) : h(sample.rawLine)}</td>
+                                </tr>
+                              `
+                            )
+                            .join("")}
+                        </tbody>
+                      </table>
+                    </div>`
+                  : ""
+              }
+              <div class="form-actions">
+                <button class="primary-button" type="button" data-confirm-competitor ${draft.band ? "" : "disabled"}>确认入库并更新机会池</button>
+                <button class="small-button" type="button" data-discard-competitor>放弃预览</button>
+              </div>
+            </div>
+          </section>`
+        : ""
+    }
+    <section class="table-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">证据库</p>
+          <h2>已确认竞品价格带</h2>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="compact-table">
+          <thead>
+            <tr>
+              <th>商品</th>
+              <th>平台 / 国家</th>
+              <th>价格带</th>
+              <th>样本</th>
+              <th>确认时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${
+              state.competitorSnapshots.length === 0
+                ? `<tr><td colspan="5" class="muted">还没有确认过竞品价格。先粘贴平台可见结果并解析。</td></tr>`
+                : state.competitorSnapshots
+                    .map((snapshot) => {
+                      const product = marketProducts.find((item) => item.id === snapshot.marketProductId);
+                      return `
+                        <tr>
+                          <td><strong>${h(product?.localTitle || snapshot.marketProductId)}</strong><br><span class="muted">${h(snapshot.keyword || "未标注关键词")}</span></td>
+                          <td>${h(snapshot.platform || "-")}<br><span class="muted">${h(snapshot.country || "-")}</span></td>
+                          <td>${money(snapshot.band.low)} / ${money(snapshot.band.mid)} / ${money(snapshot.band.high)}</td>
+                          <td>${snapshot.samples.length} 个</td>
+                          <td>${h(new Date(snapshot.confirmedAt).toLocaleString())}</td>
+                        </tr>
+                      `;
+                    })
+                    .join("")
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+  `;
+}
+
 function renderOrders() {
   const totalAmount = orders.reduce((sum, order) => sum + Number(order.amountCny || 0), 0);
   const totalProfit = orders.reduce((sum, order) => sum + Number(order.profitCny || 0), 0);
@@ -3494,6 +3831,8 @@ function resetLocalWorkspace() {
   replaceArray(orders, INITIAL_WORKSPACE.orders);
   state.discoveryCandidates = [];
   state.yiwugoCandidates = [];
+  state.competitorSnapshots = [];
+  state.competitorDraft = null;
   state.logisticsRates = [];
   state.shipments = buildDefaultShipments();
   state.dataSources = clone(DEFAULT_DATA_SOURCES);
@@ -3797,6 +4136,21 @@ function bindDynamicEvents() {
     button.addEventListener("click", () => addYiwugoCandidateToSuppliers(button.dataset.addYiwugo));
   });
 
+  document.querySelectorAll("[data-competitor-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      previewCompetitorCollection(form);
+    });
+  });
+
+  document.querySelectorAll("[data-confirm-competitor]").forEach((button) => {
+    button.addEventListener("click", confirmCompetitorCollection);
+  });
+
+  document.querySelectorAll("[data-discard-competitor]").forEach((button) => {
+    button.addEventListener("click", discardCompetitorDraft);
+  });
+
   document.querySelectorAll("[data-export-backup]").forEach((button) => {
     button.addEventListener("click", exportWorkspaceBackup);
   });
@@ -3851,6 +4205,7 @@ function render() {
   renderDashboard(opportunities);
   renderDataSourceManagement();
   renderProducts();
+  renderCompetitorCollection();
   renderOpportunities(opportunities);
   renderListingsReview(opportunities);
   renderFulfillment();
