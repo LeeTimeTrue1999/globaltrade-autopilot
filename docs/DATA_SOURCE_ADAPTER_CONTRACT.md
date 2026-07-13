@@ -2,6 +2,8 @@
 
 This contract defines how every data source enters the MVP and future backend system. It keeps manual CSV/Excel upload, visible-page competitor collection, supplier discovery, future platform APIs, and scheduled syncs source-agnostic.
 
+Marketplace-specific adaptation for Shopee, Lazada, and TikTok Shop is organized in `docs/MARKETPLACE_PLATFORM_ADAPTERS.md`. Platform connectors must still emit the normalized envelope defined here.
+
 ## Goals
 
 - One normalized intake envelope for all sources.
@@ -108,6 +110,7 @@ Every adapter should emit this envelope before domain-specific validation:
 | `fx_rates` | `fx_rate_snapshot` | Manual config now; future FX API. |
 | `shipments` | `shipment_event` | Local manual/simulated now; future carrier tracking sync. |
 | `ads` | `ad_performance_snapshot` | Manual assumption now; future ad report import/API. |
+| `shop_metrics` | `shop_metric_snapshot` | Manual weekly summary now; future seller report/API. |
 
 ## Quality Status
 

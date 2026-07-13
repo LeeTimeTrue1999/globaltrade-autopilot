@@ -34,6 +34,8 @@ If a feature is only documented but not visible in the frontend, it should appea
 
 2026-07-13 supplement: the listing draft workbench now includes a local translation/localization workflow. Operators can edit target title, keywords, attributes/specs, selling points, asset readiness, and compliance notes; saving updates localStorage, audit logs, draft completeness, and review status.
 
+2026-07-13 supplement: Shopee, Lazada, and TikTok Shop adaptation is now organized in `docs/MARKETPLACE_PLATFORM_ADAPTERS.md`. The plan keeps seller exports, visible-page capture, browser-assisted extraction, future API sync, and scheduled jobs behind the same data source adapter contract.
+
 | Area | Frontend status | MVP status | Notes |
 | --- | --- | --- | --- |
 | Local workspace storage | 配置中心 | 已完成 | Browser localStorage plus JSON backup/restore. |
@@ -53,6 +55,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 | Shipment fulfillment | 发货履约 | 部分完成 | Local shipment tasks and simulated tracking exist; no real platform callback or logistics tracking API yet. |
 | Audit log | 配置中心 | 已完成 | Local audit records important workspace actions. |
 | Data source registry | 数据导入 | 已完成 | Manual upload and future API candidates are managed together. |
+| Marketplace platform adapter plan | 文档 / 数据导入 | 已完成 | Shopee, Lazada, and TikTok Shop adaptation phases, fields, source modes, credential rules, and acceptance criteria are documented. |
 | KPI weekly review | 经营复盘 | 待补 | Needs stronger KPI dashboard for GMV, margin, test outcome, supplier issues, and logistics exceptions. |
 | Strategy action workflow | 多页面 | 待补 | Recommendations are visible, but approve/reject/execute workflow is not yet formalized. |
 | Real user roles | Frontend not active | 暂缓 | Deferred until hosted multi-user mode exists. |
@@ -87,14 +90,15 @@ If a feature is only documented but not visible in the frontend, it should appea
 ## Open MVP Gaps
 
 1. Real marketplace URL/platform parsing is not connected. Yiwugo public list discovery exists, but other platforms such as 1688 still need manual upload, logged-in browser assistance, or API access.
-2. Translation and localization are visible but not yet editable as a proper workflow.
-3. Cost templates need platform/country/category provenance so every fee can show its source.
-4. Competitor price collection is visible and local, but true automated logged-in browser extraction, official marketplace API access, and third-party market data providers still need compliance and account-access review.
-5. Supplier discovery refresh is manual in the local MVP; background schedules need a hosted job runner later.
-6. KPI weekly review needs clearer metrics and test outcome tracking.
-7. Strategy recommendations need an approval/action log.
-8. Shipment tracking is simulated; real carrier/platform sync is deferred.
-9. Multi-user permissions and backend persistence are intentionally out of scope for the local MVP.
+2. Platform-specific seller export mapping presets for Shopee, Lazada, and TikTok Shop are not implemented yet.
+3. Browser-assisted marketplace capture is documented but not implemented.
+4. Cost templates need platform/country/category provenance so every fee can show its source.
+5. Competitor price collection is visible and local, but true automated logged-in browser extraction, official marketplace API access, and third-party market data providers still need compliance and account-access review.
+6. Supplier discovery refresh is manual in the local MVP; background schedules need a hosted job runner later.
+7. KPI weekly review needs clearer metrics and test outcome tracking.
+8. Strategy recommendations need an approval/action log.
+9. Shipment tracking is simulated; real carrier/platform sync is deferred.
+10. Multi-user permissions and backend persistence are intentionally out of scope for the local MVP.
 
 ## Operating Rule
 

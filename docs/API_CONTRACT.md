@@ -6,6 +6,8 @@
 
 Data source adapters must emit the normalized intake envelope defined in `docs/DATA_SOURCE_ADAPTER_CONTRACT.md` before validation, preview, confirmation, and audit.
 
+Shopee, Lazada, and TikTok Shop integration phases and field mapping rules are organized in `docs/MARKETPLACE_PLATFORM_ADAPTERS.md`.
+
 ## Auth
 
 ```http
@@ -120,6 +122,27 @@ POST /api/orders/import
 GET /api/orders/{id}
 PATCH /api/orders/{id}/fulfillment-status
 ```
+
+## Platform Sources And Adapters
+
+```http
+GET /api/platform-sources
+POST /api/platform-sources
+GET /api/platform-sources/{id}
+PATCH /api/platform-sources/{id}
+POST /api/platform-sources/{id}/test-connection
+POST /api/platform-sources/{id}/sync
+GET /api/platform-sources/{id}/sync-batches
+POST /api/platform-adapters/browser-captures
+POST /api/platform-adapters/visible-page-captures
+```
+
+平台适配器规则：
+
+- 所有同步、导出解析、浏览器辅助采集都必须先生成 data source adapter envelope。
+- API token 只能存后端 secret store，不能进前端 localStorage。
+- 竞品页和搜索页优先走可见页采集或浏览器辅助采集，不把公开页面当成稳定服务端 API。
+- 发布、调价、发货回传、广告预算修改必须走审批和审计。
 
 ## Strategy
 
