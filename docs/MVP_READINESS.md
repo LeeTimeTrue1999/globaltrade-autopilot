@@ -32,6 +32,8 @@ If a feature is only documented but not visible in the frontend, it should appea
 
 2026-07-13 supplement: the data source adapter contract is now defined in `docs/DATA_SOURCE_ADAPTER_CONTRACT.md` and visible on the frontend data import page. Manual upload, visible-page capture, public discovery, browser-assisted extraction, API sync, and scheduled jobs share one normalized intake envelope and credential rule.
 
+2026-07-13 supplement: the listing draft workbench now includes a local translation/localization workflow. Operators can edit target title, keywords, attributes/specs, selling points, asset readiness, and compliance notes; saving updates localStorage, audit logs, draft completeness, and review status.
+
 | Area | Frontend status | MVP status | Notes |
 | --- | --- | --- | --- |
 | Local workspace storage | 配置中心 | 已完成 | Browser localStorage plus JSON backup/restore. |
@@ -45,7 +47,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 | Opportunity discovery | 机会池 | 部分完成 | Link/category discovery exists, but signals are locally simulated until real parsing/API data is connected. |
 | Opportunity detail review | 机会池 | 已完成 | Shows market data, supplier data, score factors, cost breakdown, and research source notes. |
 | Listing draft handoff | 机会池 / 上架草稿 | 已完成 | Opportunities can generate or open listing drafts. |
-| Listing review | 上架草稿 | 部分完成 | Review panel exists, but translation/localization editing is not yet a full workflow. |
+| Listing review | 上架草稿 | 已完成 | Review panel includes editable translation/localization fields, readiness checks, local status updates, and audit logging. |
 | Cost assumptions | 配置中心 / 机会池 | 部分完成 | Fees, FX, ad cost, return loss, packaging, supplier cost, and logistics cost are visible; source provenance needs clearer templates by platform/country/category. |
 | Order and revenue data | 订单管理 / 收入数据 | 已完成 | Order import drives revenue summary and order management views. |
 | Shipment fulfillment | 发货履约 | 部分完成 | Local shipment tasks and simulated tracking exist; no real platform callback or logistics tracking API yet. |

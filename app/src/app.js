@@ -333,9 +333,9 @@ const mvpReadinessItems = [
   {
     area: "上架审核工作台",
     surface: "上架草稿",
-    status: "部分完成",
+    status: "已完成",
     priority: "P0",
-    note: "审核面板已覆盖发布信息、翻译本地化、清单、成本、供应商和物流；文本编辑流还要增强。"
+    note: "审核面板已覆盖发布信息、翻译本地化编辑、清单、成本、供应商和物流；保存后更新本地状态和审计日志。"
   },
   {
     area: "成本依据和模板",
@@ -957,7 +957,8 @@ function auditActionLabel(action) {
   };
   Object.assign(labels, {
     "competitor.previewed": "预览竞品价格",
-    "competitor.confirmed": "确认竞品价格带"
+    "competitor.confirmed": "确认竞品价格带",
+    "listing.localization_saved": "保存上架本地化"
   });
   return labels[action] || action;
 }
@@ -1776,6 +1777,14 @@ function draftReviewChecks(draft, opportunity) {
   const marginOk = opportunity ? opportunity.cost.grossMargin >= state.marginThreshold : draft.completeness >= 85;
   const riskOk = opportunity ? opportunity.scores.risk < 60 : !draft.status.includes("复核");
   const logisticsOk = Number(product?.logisticsCostCny || 0) > 0;
+  const localization = draft.localization || {};
+  const localizationOk = Boolean(
+    localization.targetTitle &&
+      localization.keywords &&
+      localization.sellingPoints &&
+      (localization.attributes || draft.assetStatus) &&
+      draft.complianceNote
+  );
 
   return [
     {
@@ -1799,6 +1808,11 @@ function draftReviewChecks(draft, opportunity) {
       detail: opportunity ? `预估毛利率 ${percent(opportunity.cost.grossMargin)}` : `资料完整度 ${draft.completeness}%`
     },
     {
+      label: "本地化",
+      ok: localizationOk,
+      detail: localizationOk ? "标题、关键词、卖点、规格和合规备注已补齐" : "待补标题、关键词、卖点、图片/规格或合规备注"
+    },
+    {
       label: "风险",
       ok: riskOk,
       detail: opportunity ? `风险分 ${score(opportunity.scores.risk)}` : draft.status
@@ -1817,8 +1831,10 @@ function draftStage(draft, checks, opportunity) {
 function draftActionView(checks) {
   const missingSupplier = checks.some((item) => item.label === "供应商" && !item.ok);
   const missingLogistics = checks.some((item) => item.label === "物流" && !item.ok);
+  const missingLocalization = checks.some((item) => item.label === "本地化" && !item.ok);
   if (missingSupplier) return { view: "supplierMatching", label: "去匹配供应商" };
   if (missingLogistics) return { view: "logistics", label: "去补物流报价" };
+  if (missingLocalization) return { view: "listings", label: "补本地化" };
   return { view: "opportunities", label: "查看机会详情" };
 }
 
@@ -2166,6 +2182,47 @@ function createListingDraftFromOpportunity(opportunityId) {
   }
   state.selectedDraftId = draft.id;
   state.view = "listings";
+  saveWorkspaceState();
+  render();
+}
+
+function localizationCompleteness(draft) {
+  const localization = draft.localization || {};
+  const fields = [
+    localization.targetTitle,
+    localization.keywords,
+    localization.sellingPoints,
+    localization.attributes || draft.assetStatus,
+    draft.complianceNote
+  ];
+  const filled = fields.filter((value) => String(value || "").trim()).length;
+  return Math.min(100, 60 + filled * 8);
+}
+
+function saveListingLocalization(draftId, form) {
+  const draft = listingDrafts.find((item) => item.id === draftId);
+  if (!draft) return;
+  const formData = new FormData(form);
+  const value = (name) => String(formData.get(name) || "").trim();
+  draft.localization = {
+    ...(draft.localization || {}),
+    targetTitle: value("targetTitle"),
+    keywords: value("keywords"),
+    sellingPoints: value("sellingPoints"),
+    attributes: value("attributes")
+  };
+  draft.assetStatus = value("assetStatus");
+  draft.complianceNote = value("complianceNote");
+  draft.completeness = Math.max(Number(draft.completeness || 0), localizationCompleteness(draft));
+  const missingRequired = [
+    draft.localization.targetTitle,
+    draft.localization.keywords,
+    draft.localization.sellingPoints,
+    draft.localization.attributes || draft.assetStatus,
+    draft.complianceNote
+  ].some((item) => !item);
+  draft.status = missingRequired ? "待补本地化" : "待运营确认";
+  logAction("listing.localization_saved", { draftId, title: draft.localTitle || draft.title });
   saveWorkspaceState();
   render();
 }
@@ -2518,9 +2575,40 @@ function listingReviewPanel(row) {
           ${detailRows([
             ["关键词", localization.keywords || [product?.category, draft.platform, draft.country].filter(Boolean).join(" / ") || "待补充"],
             ["卖点文案", localization.sellingPoints || "待补充本地化卖点、规格、图片和活动文案"],
+            ["属性/规格", localization.attributes || "待补充尺寸、材质、颜色、包装和适配场景"],
             ["图片/规格", draft.assetStatus || "待确认主图、详情图、尺寸、材质和包装规格"],
             ["合规文案", draft.complianceNote || (stage.includes("合规") ? "需要合规负责人复核后再发布" : "常规类目，发布前做关键词和素材复核")]
           ])}
+          <form class="localization-form" data-localization-form="${h(draft.id)}">
+            <label class="wide-field">
+              目标上架标题
+              <input name="targetTitle" type="text" value="${h(localization.targetTitle || draft.title)}" placeholder="面向目标国家用户的上架标题">
+            </label>
+            <label>
+              关键词
+              <textarea name="keywords" placeholder="搜索词、类目词、场景词，用逗号或换行分隔">${h(localization.keywords || "")}</textarea>
+            </label>
+            <label>
+              属性/规格
+              <textarea name="attributes" placeholder="尺寸、材质、颜色、包装、适配场景">${h(localization.attributes || "")}</textarea>
+            </label>
+            <label class="wide-field">
+              卖点文案
+              <textarea name="sellingPoints" placeholder="本地化卖点、使用场景、差异化理由">${h(localization.sellingPoints || "")}</textarea>
+            </label>
+            <label>
+              图片/素材状态
+              <textarea name="assetStatus" placeholder="主图、详情图、尺寸图、包装图、素材缺口">${h(draft.assetStatus || "")}</textarea>
+            </label>
+            <label>
+              合规备注
+              <textarea name="complianceNote" placeholder="禁限词、认证、侵权、平台规则、人工复核结论">${h(draft.complianceNote || "")}</textarea>
+            </label>
+            <div class="form-actions wide-field">
+              <button class="primary-button" type="submit">保存本地化</button>
+              <span class="muted">保存后写入本地工作区，并更新草稿审核状态。</span>
+            </div>
+          </form>
         </section>
 
         <section>
@@ -4106,6 +4194,13 @@ function bindDynamicEvents() {
       state.selectedDraftId = button.dataset.selectDraft;
       saveWorkspaceState();
       render();
+    });
+  });
+
+  document.querySelectorAll("[data-localization-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      saveListingLocalization(form.dataset.localizationForm, form);
     });
   });
 

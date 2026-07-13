@@ -738,6 +738,17 @@ h3 {
   align-items: end;
 }
 
+.localization-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--surface-soft);
+}
+
 .logistics-form label {
   display: grid;
   gap: 6px;
@@ -745,7 +756,8 @@ h3 {
   font-size: 12px;
 }
 
-.competitor-form label {
+.competitor-form label,
+.localization-form label {
   display: grid;
   gap: 6px;
   color: var(--muted);
@@ -756,7 +768,9 @@ h3 {
 .logistics-form select,
 .competitor-form input,
 .competitor-form select,
-.competitor-form textarea {
+.competitor-form textarea,
+.localization-form input,
+.localization-form textarea {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 7px;
@@ -765,13 +779,15 @@ h3 {
   padding: 9px 10px;
 }
 
-.competitor-form textarea {
+.competitor-form textarea,
+.localization-form textarea {
   min-height: 180px;
   resize: vertical;
   line-height: 1.45;
 }
 
-.competitor-form .wide-field {
+.competitor-form .wide-field,
+.localization-form .wide-field {
   grid-column: 1 / -1;
 }
 
@@ -1233,6 +1249,7 @@ tbody tr:hover {
   .mapping-grid,
   .logistics-form,
   .competitor-form,
+  .localization-form,
   .automation-grid,
   .discovery-form,
   .discovery-grid,
