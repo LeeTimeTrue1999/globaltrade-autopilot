@@ -4,6 +4,8 @@
 
 后端持久化、对象存储、权限和审计设计见 `docs/BACKEND_PERSISTENCE_DESIGN.md`。
 
+Data source adapters must emit the normalized intake envelope defined in `docs/DATA_SOURCE_ADAPTER_CONTRACT.md` before validation, preview, confirmation, and audit.
+
 ## Auth
 
 ```http

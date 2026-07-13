@@ -30,6 +30,8 @@ If a feature is only documented but not visible in the frontend, it should appea
 
 2026-07-12 supplement: a local competitor price collection workbench is now visible in the frontend. It supports pasted visible marketplace results or CSV-like rows, extracts prices, previews samples, computes low/mid/high CNY price bands, and writes confirmed bands back to market products. It does not store cookies or run background scraping.
 
+2026-07-13 supplement: the data source adapter contract is now defined in `docs/DATA_SOURCE_ADAPTER_CONTRACT.md` and visible on the frontend data import page. Manual upload, visible-page capture, public discovery, browser-assisted extraction, API sync, and scheduled jobs share one normalized intake envelope and credential rule.
+
 | Area | Frontend status | MVP status | Notes |
 | --- | --- | --- | --- |
 | Local workspace storage | 配置中心 | 已完成 | Browser localStorage plus JSON backup/restore. |

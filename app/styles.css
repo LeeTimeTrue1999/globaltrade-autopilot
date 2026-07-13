@@ -294,6 +294,7 @@ h3 {
 .table-panel,
 .detail-card,
 .kanban-card {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--surface);
@@ -619,6 +620,8 @@ h3 {
 
 .table-scroll {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
   overflow-x: auto;
 }
 

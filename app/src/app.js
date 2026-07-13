@@ -70,6 +70,49 @@ const DEFAULT_DATA_SOURCES = [
     fields: "确认权限后再接入商品、订单、结算、刊登等接口"
   }
 ];
+
+const DATA_SOURCE_ADAPTER_CONTRACTS = [
+  {
+    mode: "manual_upload",
+    label: "人工 CSV/Excel",
+    status: "已接入",
+    domains: "市场商品、供应商商品、物流报价、订单",
+    handoff: "文件解析 -> 字段映射 -> 预览校验 -> 人工确认 -> 入库",
+    credentialRule: "不需要账号凭证"
+  },
+  {
+    mode: "visible_page_capture",
+    label: "可见页面采集",
+    status: "已接入",
+    domains: "竞品价格",
+    handoff: "粘贴可见结果 -> 价格解析 -> 样本预览 -> 人工确认 -> 回填机会池",
+    credentialRule: "不保存 cookie，只处理用户确认的可见数据"
+  },
+  {
+    mode: "public_discovery",
+    label: "公开发现",
+    status: "已接入",
+    domains: "义乌购供应商候选",
+    handoff: "公开列表查询 -> 候选评分 -> 人工确认 -> 加入供应商池",
+    credentialRule: "不读取登录后数据"
+  },
+  {
+    mode: "browser_assisted",
+    label: "浏览器辅助",
+    status: "待接入",
+    domains: "平台搜索页、商品页、竞品结果",
+    handoff: "用户打开页面 -> 明确触发采集 -> 预览 -> 人工确认",
+    credentialRule: "用户控制登录状态，系统不保存 cookie"
+  },
+  {
+    mode: "api_sync",
+    label: "官方 API 同步",
+    status: "暂缓",
+    domains: "平台商品、订单、广告、物流、汇率",
+    handoff: "授权 API -> 标准 envelope -> 校验 -> 任务审计 -> 应用",
+    credentialRule: "需要后端 secret store，不能放 localStorage"
+  }
+];
 const managementViews = new Set([
   "dataSources",
   "products",
@@ -352,6 +395,15 @@ mvpReadinessItems.splice(5, 0, {
   priority: "P0",
   note:
     "机会详情已显示目标国售价依据、广告测算、重量体积缺口、物流成本依据、供应商备选和三档利润场景；真实竞品、广告、重量和路线报价仍需通过导入或后续适配器补齐。"
+});
+
+mvpReadinessItems.splice(6, 0, {
+  area: "数据源适配器契约",
+  surface: "数据导入 / docs",
+  status: "已完成",
+  priority: "P0",
+  note:
+    "已定义统一 intake envelope，覆盖人工上传、可见页面采集、公开发现、浏览器辅助和未来 API 同步；前端数据导入页展示接入方式、标准交接和凭证规则。"
 });
 
 function statusRank(status) {
@@ -1036,6 +1088,41 @@ function renderDataSourceManagement() {
             `
           )
           .join("")}
+      </div>
+    </section>
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">统一契约</p>
+          <h2>数据源适配器规范</h2>
+          <p class="muted">所有数据源都先进入标准 envelope：采集来源、接入方式、字段映射、原始行、标准化行、质量状态、确认动作和审计记录。详细文档见 docs/DATA_SOURCE_ADAPTER_CONTRACT.md。</p>
+        </div>
+      </div>
+      <div class="table-scroll">
+        <table class="compact-table">
+          <thead>
+            <tr>
+              <th>接入方式</th>
+              <th>状态</th>
+              <th>覆盖数据</th>
+              <th>标准交接</th>
+              <th>凭证规则</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${DATA_SOURCE_ADAPTER_CONTRACTS.map(
+              (item) => `
+                <tr>
+                  <td><strong>${h(item.label)}</strong><br><span class="muted">${h(item.mode)}</span></td>
+                  <td><span class="tag ${item.status === "已接入" ? "good" : item.status === "待接入" ? "warning" : "info"}">${h(item.status)}</span></td>
+                  <td class="wide-note">${h(item.domains)}</td>
+                  <td class="wide-note">${h(item.handoff)}</td>
+                  <td class="wide-note">${h(item.credentialRule)}</td>
+                </tr>
+              `
+            ).join("")}
+          </tbody>
+        </table>
       </div>
     </section>
     ${renderImportPanel()}
