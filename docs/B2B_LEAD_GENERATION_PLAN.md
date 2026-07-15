@@ -11,8 +11,8 @@ Example:
 1. Input: `钓鱼竿`.
 2. Demand exploration suggests Thailand, Philippines, Indonesia, Malaysia, and the United States.
 3. The system generates search tasks for fishing tackle shops, outdoor stores, marine supply stores, and sporting goods retailers.
-4. Operators collect public store information from maps, review platforms, directories, or visible search results.
-5. Leads enter a CRM-style follow-up flow.
+4. The system generates source plans for maps, review platforms, directories, and search engines.
+5. Operators open or later browser-assist those sources, parse public store information, and confirm leads into a CRM-style follow-up flow.
 
 ## Core Workflow
 
@@ -21,10 +21,11 @@ flowchart LR
   A["输入商品/类目"] --> B["需求探查"]
   B --> C["推荐国家和城市"]
   C --> D["生成地图/点评/目录搜索任务"]
-  D --> E["采集公开店铺信息"]
-  E --> F["线索池去重和评分"]
-  F --> G["销售跟进"]
-  G --> H["报价/样品/成交复盘"]
+  D --> E["自动生成信息源和解析规则"]
+  E --> F["采集公开店铺信息"]
+  F --> G["线索池去重和评分"]
+  G --> H["销售跟进"]
+  H --> I["报价/样品/成交复盘"]
 ```
 
 ## Demand Exploration
@@ -49,6 +50,27 @@ The demand exploration module should combine multiple signals. In the local MVP,
 | Industry directories | B2B wholesalers and distributors | CSV/manual upload or visible-page capture | Preserve directory source and freshness. |
 | Search engines | Website and contact page discovery | Manual/browser-assisted visible results | Keep the search query and result URL. |
 | Social pages | Active business verification | Manual/browser-assisted visible data | Do not collect private personal accounts. |
+
+## Source Plan Entity
+
+```json
+{
+  "id": "lead-source-task-google-maps",
+  "taskId": "lead-task-001",
+  "researchId": "demand-001",
+  "productIntent": "钓鱼竿",
+  "country": "泰国",
+  "city": "曼谷",
+  "platform": "Google Maps",
+  "sourceType": "地图 POI",
+  "keyword": "fishing tackle shop 曼谷 泰国",
+  "generatedUrl": "https://www.google.com/maps/search/...",
+  "parseMode": "浏览器辅助解析",
+  "expectedFields": ["店名", "地址", "公开电话", "官网", "评分", "评论数", "地图链接"],
+  "safetyRule": "只读取当前页面公开可见内容，不保存 cookie，不绕过登录或验证码",
+  "status": "待打开"
+}
+```
 
 ## Lead Entity
 
@@ -104,7 +126,8 @@ The demand exploration module should combine multiple signals. In the local MVP,
 | --- | --- |
 | 需求探查 | Input product/category, recommend countries, generate search tasks. |
 | 定点采集任务 | Store map/review/search tasks by product, country, city, platform, keyword, and suggested limit. |
-| 店铺线索池 | Future: parse/store business leads, dedupe, score, and manage source evidence. |
+| 信息源自动发现 | Generate Google Maps, Baidu/Amap, Dianping, web search, and industry-directory source URLs with parser rules and safety boundaries. |
+| 店铺线索池 | Parse/store business leads, dedupe, score, and manage source evidence after human confirmation. |
 | 销售跟进 | Future: status, owner, contact log, template messages, quote/sample follow-up. |
 | 数据源治理 | Reuse the existing adapter envelope for maps, visible pages, directories, manual uploads, and future APIs. |
 
@@ -114,5 +137,7 @@ The demand exploration module should combine multiple signals. In the local MVP,
 2. Add low-frequency map/review/search task generator. Done in local MVP.
 3. Add visible-page lead paste/import parser. Done in local MVP.
 4. Add lead pool with dedupe and scoring. Done in local MVP.
-5. Add CRM follow-up statuses and contact notes.
-6. Add message templates by language and product category.
+5. Add automatic source discovery plans with generated URLs and parser routing. Done in local MVP.
+6. Add browser-assisted visible source extraction from generated pages.
+7. Add CRM follow-up statuses and contact notes.
+8. Add message templates by language and product category.

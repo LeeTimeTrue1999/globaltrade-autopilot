@@ -192,6 +192,69 @@ const B2B_CUSTOMER_TYPE_RULES = [
   }
 ];
 
+const B2B_LEAD_SOURCE_PROFILES = [
+  {
+    id: "google-maps",
+    platform: "Google Maps",
+    sourceType: "地图 POI",
+    coverage: "海外",
+    parseMode: "浏览器辅助解析",
+    cadence: "按任务人工触发",
+    expectedFields: ["店名", "地址", "公开电话", "官网", "评分", "评论数", "地图链接"],
+    safetyRule: "只读取当前页面公开可见内容，不保存 cookie，不绕过登录或验证码"
+  },
+  {
+    id: "baidu-maps",
+    platform: "百度地图",
+    sourceType: "地图 POI",
+    coverage: "中国/部分海外",
+    parseMode: "浏览器辅助解析",
+    cadence: "按任务人工触发",
+    expectedFields: ["店名", "地址", "公开电话", "营业时间", "地图链接"],
+    safetyRule: "低频定点搜索，只处理公开页面字段"
+  },
+  {
+    id: "amap",
+    platform: "高德地图",
+    sourceType: "地图 POI",
+    coverage: "中国/部分海外",
+    parseMode: "浏览器辅助解析",
+    cadence: "按任务人工触发",
+    expectedFields: ["店名", "地址", "公开电话", "类目", "地图链接"],
+    safetyRule: "低频定点搜索，只处理公开页面字段"
+  },
+  {
+    id: "dianping",
+    platform: "大众点评",
+    sourceType: "点评/本地生活",
+    coverage: "中国/部分海外城市",
+    parseMode: "可见页解析",
+    cadence: "按任务人工触发",
+    expectedFields: ["店名", "地址", "评分", "评论数", "公开电话", "详情链接"],
+    safetyRule: "不读取登录后数据，不批量翻页高频采集"
+  },
+  {
+    id: "search-web",
+    platform: "网页搜索",
+    sourceType: "搜索结果",
+    coverage: "全球",
+    parseMode: "搜索结果解析",
+    cadence: "按任务人工触发",
+    expectedFields: ["店名", "官网", "公开电话", "地址", "目录来源", "搜索链接"],
+    safetyRule: "优先行业目录和官网公开信息，排除隐私联系人"
+  },
+  {
+    id: "industry-directory",
+    platform: "行业目录",
+    sourceType: "B2B/门店目录",
+    coverage: "按国家变化",
+    parseMode: "目录页解析",
+    cadence: "按任务人工触发",
+    expectedFields: ["公司/店铺名", "官网", "公开邮箱", "公开电话", "地址", "目录链接"],
+    safetyRule: "只采集目录公开展示的企业联系方式"
+  }
+];
+
 const managementViews = new Set([
   "dataSources",
   "products",
@@ -264,6 +327,7 @@ const state = {
   discoveryCandidates: [],
   demandResearches: [],
   leadSearchTasks: [],
+  leadSourcePlans: [],
   storeLeads: [],
   storeLeadDraft: null,
   selectedDemandResearchId: null,
@@ -492,6 +556,15 @@ mvpReadinessItems.splice(6, 0, {
     "已定义统一 intake envelope，覆盖人工上传、可见页面采集、公开发现、浏览器辅助和未来 API 同步；前端数据导入页展示接入方式、标准交接和凭证规则。"
 });
 
+mvpReadinessItems.splice(7, 0, {
+  area: "B2B 信息源自动发现",
+  surface: "需求探查",
+  status: "已完成",
+  priority: "P0",
+  note:
+    "需求探查页会自动生成地图、点评、行业目录和网页搜索入口，并记录解析方式、可读字段、合规边界和状态；真实页面抽取仍需浏览器辅助适配器。"
+});
+
 function statusRank(status) {
   const rank = {
     待发货: 0,
@@ -590,6 +663,7 @@ function buildWorkspaceSnapshot() {
     discoveryCandidates: state.discoveryCandidates,
     demandResearches: state.demandResearches,
     leadSearchTasks: state.leadSearchTasks,
+    leadSourcePlans: state.leadSourcePlans,
     storeLeads: state.storeLeads,
     storeLeadDraft: state.storeLeadDraft,
     selectedDemandResearchId: state.selectedDemandResearchId,
@@ -620,6 +694,7 @@ function applyWorkspaceSnapshot(saved) {
   state.discoveryCandidates = Array.isArray(saved.discoveryCandidates) ? saved.discoveryCandidates : [];
   state.demandResearches = Array.isArray(saved.demandResearches) ? saved.demandResearches : [];
   state.leadSearchTasks = Array.isArray(saved.leadSearchTasks) ? saved.leadSearchTasks : [];
+  state.leadSourcePlans = Array.isArray(saved.leadSourcePlans) ? saved.leadSourcePlans : [];
   state.storeLeads = Array.isArray(saved.storeLeads) ? saved.storeLeads : [];
   state.storeLeadDraft = saved.storeLeadDraft || null;
   state.selectedDemandResearchId = saved.selectedDemandResearchId || null;
@@ -1052,6 +1127,8 @@ function auditActionLabel(action) {
     "supplier_discovery.config_updated": "更新供应商发现规则",
     "b2b.demand_research_created": "创建 ToB 需求探查",
     "b2b.lead_task_status_updated": "更新线索采集任务",
+    "b2b.lead_sources_generated": "生成线索信息源",
+    "b2b.lead_source_status_updated": "更新线索信息源状态",
     "b2b.store_leads_previewed": "预览店铺线索",
     "b2b.store_leads_confirmed": "确认店铺线索",
     "b2b.store_lead_status_updated": "更新店铺线索状态",
@@ -1534,6 +1611,84 @@ function updateLeadSearchTaskStatus(taskId, status) {
   render();
 }
 
+function leadSourceSearchQuery(task, profile) {
+  const baseKeyword = `${task.keyword || task.targetCustomerType || task.productIntent} ${task.city || ""} ${task.country || ""}`.trim();
+  if (profile.id === "industry-directory") return `${task.country} ${task.targetCustomerType || task.productIntent} distributor directory contact`;
+  if (profile.id === "search-web") return `${baseKeyword} phone address website`;
+  return baseKeyword;
+}
+
+function leadSourceUrl(task, profile) {
+  const query = encodeURIComponent(leadSourceSearchQuery(task, profile));
+  const urls = {
+    "google-maps": `https://www.google.com/maps/search/${query}`,
+    "baidu-maps": `https://map.baidu.com/search/${query}`,
+    amap: `https://ditu.amap.com/search?query=${query}`,
+    dianping: `https://www.dianping.com/search/keyword/1/0_${query}`,
+    "search-web": `https://www.google.com/search?q=${query}`,
+    "industry-directory": `https://www.google.com/search?q=${query}`
+  };
+  return urls[profile.id] || `https://www.google.com/search?q=${query}`;
+}
+
+function preferredLeadSourceProfiles(task) {
+  const overseas = !["中国", "China"].includes(task.country);
+  const primaryIds = overseas ? ["google-maps", "search-web", "industry-directory"] : ["baidu-maps", "amap", "dianping"];
+  const taskPlatform = String(task.platform || "").toLowerCase();
+  const matchedPlatform = B2B_LEAD_SOURCE_PROFILES.find((profile) => taskPlatform && profile.platform.toLowerCase().includes(taskPlatform));
+  return [
+    ...(matchedPlatform ? [matchedPlatform] : []),
+    ...primaryIds.map((id) => B2B_LEAD_SOURCE_PROFILES.find((profile) => profile.id === id)).filter(Boolean)
+  ].filter((profile, index, list) => list.findIndex((item) => item.id === profile.id) === index);
+}
+
+function buildLeadSourcePlan(task, profile) {
+  return {
+    id: `lead-source-${task.id}-${profile.id}`,
+    taskId: task.id,
+    researchId: task.researchId,
+    productIntent: task.productIntent,
+    country: task.country,
+    city: task.city,
+    platform: profile.platform,
+    sourceType: profile.sourceType,
+    coverage: profile.coverage,
+    keyword: leadSourceSearchQuery(task, profile),
+    generatedUrl: leadSourceUrl(task, profile),
+    parseMode: profile.parseMode,
+    expectedFields: profile.expectedFields,
+    safetyRule: profile.safetyRule,
+    cadence: profile.cadence,
+    status: "待打开",
+    createdAt: new Date().toISOString()
+  };
+}
+
+function generateLeadSourcePlans(researchId) {
+  const tasks = state.leadSearchTasks.filter((task) => task.researchId === researchId).slice(0, 36);
+  if (!tasks.length) return;
+  const existingIds = new Set(state.leadSourcePlans.map((plan) => plan.id));
+  const plans = tasks.flatMap((task) => preferredLeadSourceProfiles(task).map((profile) => buildLeadSourcePlan(task, profile))).filter((plan) => !existingIds.has(plan.id));
+  state.leadSourcePlans = [...plans, ...state.leadSourcePlans].slice(0, 500);
+  logAction("b2b.lead_sources_generated", { researchId, count: plans.length });
+  saveWorkspaceState();
+  render();
+}
+
+function updateLeadSourcePlanStatus(planId, status) {
+  const plan = state.leadSourcePlans.find((item) => item.id === planId);
+  if (!plan) return;
+  plan.status = status;
+  plan.updatedAt = new Date().toISOString();
+  if (status === "已解析") {
+    const task = state.leadSearchTasks.find((item) => item.id === plan.taskId);
+    if (task && task.status === "待采集") task.status = "解析中";
+  }
+  logAction("b2b.lead_source_status_updated", { planId, status, platform: plan.platform, keyword: plan.keyword });
+  saveWorkspaceState();
+  render();
+}
+
 function normalizeLeadPhone(text) {
   const phone = String(text || "").match(/(?:\+?\d[\d\s().-]{6,}\d)|(?:0\d{2,4}[-\s]?\d{6,8})|(?:1[3-9]\d{9})/);
   return phone ? phone[0].replace(/\s{2,}/g, " ").trim() : "";
@@ -1748,6 +1903,7 @@ function renderDemandResearch() {
   const selected = state.demandResearches.find((item) => item.id === state.selectedDemandResearchId) || state.demandResearches[0] || null;
   if (selected && state.selectedDemandResearchId !== selected.id) state.selectedDemandResearchId = selected.id;
   const tasks = selected ? state.leadSearchTasks.filter((task) => task.researchId === selected.id) : [];
+  const sourcePlans = selected ? state.leadSourcePlans.filter((plan) => plan.researchId === selected.id) : [];
   const readyTasks = tasks.filter((task) => task.status === "待采集").length;
   const selectedTask = tasks.find((task) => task.status === "待采集") || tasks[0] || {};
   const relatedLeads = selected ? state.storeLeads.filter((lead) => lead.productIntent === selected.productIntent) : state.storeLeads;
@@ -1766,6 +1922,7 @@ function renderDemandResearch() {
       ${metricCard("推荐国家", targetCountries, "当前项目建议优先验证的国家")}
       ${metricCard("目标城市", targetCities, "会生成定点搜索任务的城市")}
       ${metricCard("待采集任务", readyTasks, "下一步进入地图/点评可见页采集")}
+      ${metricCard("信息源", sourcePlans.length, "自动生成的地图/目录/搜索入口")}
       ${metricCard("店铺线索", state.storeLeads.length, "已确认进入本地线索池")}
     </div>
 
@@ -1842,7 +1999,10 @@ function renderDemandResearch() {
                 <p class="eyebrow">低频定点采集</p>
                 <h2>地图 / 点评 / 搜索任务</h2>
               </div>
-              <span class="muted">每个任务建议 20-30 条，合计一两百条足够验证。</span>
+              <button class="small-button" type="button" data-generate-lead-sources="${h(selected.id)}">自动生成信息源</button>
+            </div>
+            <div class="panel-body subtle-panel">
+              <p class="muted">每个任务建议 20-30 条，合计一两百条足够验证。点击自动生成信息源后，系统会为每个国家/城市/客户类型生成地图、点评、行业目录和网页搜索入口，并附带可解析字段规则。</p>
             </div>
             <table>
               <thead>
@@ -1877,6 +2037,56 @@ function renderDemandResearch() {
                   .join("")}
               </tbody>
             </table>
+          </section>
+          <section class="table-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">信息源自动发现</p>
+                <h2>系统生成来源入口和解析规则</h2>
+              </div>
+              <span class="muted">真实抓取阶段用浏览器辅助或官方 API 接入；当前先规范入口、字段和状态。</span>
+            </div>
+            <div class="table-scroll">
+              <table class="compact-table">
+                <thead>
+                  <tr>
+                    <th>国家 / 城市</th>
+                    <th>信息源</th>
+                    <th>搜索词</th>
+                    <th>解析字段</th>
+                    <th>方式 / 边界</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    sourcePlans.length === 0
+                      ? `<tr><td colspan="7" class="muted">还没有生成信息源。先点“自动生成信息源”，系统会按当前采集任务生成地图、点评、目录和网页搜索入口。</td></tr>`
+                      : sourcePlans
+                          .slice(0, 90)
+                          .map(
+                            (plan) => `
+                              <tr>
+                                <td><strong>${h(plan.country)}</strong><br><span class="muted">${h(plan.city)}</span></td>
+                                <td>${h(plan.platform)}<br><span class="muted">${h(plan.sourceType)} / ${h(plan.coverage)}</span></td>
+                                <td class="wide-note">${h(plan.keyword)}<br><a href="${h(plan.generatedUrl)}" target="_blank" rel="noopener">打开来源</a></td>
+                                <td class="wide-note">${h((plan.expectedFields || []).join("、"))}</td>
+                                <td class="wide-note">${h(plan.parseMode)}<br><span class="muted">${h(plan.safetyRule)}</span></td>
+                                <td><span class="tag ${statusClass(plan.status)}">${h(plan.status)}</span></td>
+                                <td>
+                                  <select class="inline-select" data-lead-source-status="${h(plan.id)}">
+                                    ${["待打开", "待解析", "已解析", "已入池", "失败", "跳过"].map((status) => `<option value="${status}" ${plan.status === status ? "selected" : ""}>${status}</option>`).join("")}
+                                  </select>
+                                </td>
+                              </tr>
+                            `
+                          )
+                          .join("")
+                  }
+                </tbody>
+              </table>
+            </div>
           </section>
           <section class="panel">
             <div class="panel-header">
@@ -4719,6 +4929,7 @@ function resetLocalWorkspace() {
   state.discoveryCandidates = [];
   state.demandResearches = [];
   state.leadSearchTasks = [];
+  state.leadSourcePlans = [];
   state.storeLeads = [];
   state.storeLeadDraft = null;
   state.selectedDemandResearchId = null;
@@ -5020,6 +5231,18 @@ function bindDynamicEvents() {
   document.querySelectorAll("[data-lead-task-status]").forEach((button) => {
     button.addEventListener("click", () => {
       updateLeadSearchTaskStatus(button.dataset.leadTaskStatus, button.dataset.status);
+    });
+  });
+
+  document.querySelectorAll("[data-generate-lead-sources]").forEach((button) => {
+    button.addEventListener("click", () => {
+      generateLeadSourcePlans(button.dataset.generateLeadSources);
+    });
+  });
+
+  document.querySelectorAll("[data-lead-source-status]").forEach((select) => {
+    select.addEventListener("change", () => {
+      updateLeadSourcePlanStatus(select.dataset.leadSourceStatus, select.value);
     });
   });
 
