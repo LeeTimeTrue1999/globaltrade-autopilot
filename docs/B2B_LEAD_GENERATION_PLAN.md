@@ -110,9 +110,9 @@ The demand exploration module should combine multiple signals. In the local MVP,
 
 ## Near-Term TODO
 
-1. Add local demand exploration page.
-2. Add low-frequency map/review/search task generator.
-3. Add visible-page lead paste/import parser.
-4. Add lead pool with dedupe and scoring.
+1. Add local demand exploration page. Done in local MVP.
+2. Add low-frequency map/review/search task generator. Done in local MVP.
+3. Add visible-page lead paste/import parser. Done in local MVP.
+4. Add lead pool with dedupe and scoring. Done in local MVP.
 5. Add CRM follow-up statuses and contact notes.
 6. Add message templates by language and product category.

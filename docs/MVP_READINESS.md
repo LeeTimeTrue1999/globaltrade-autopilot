@@ -38,7 +38,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 
 2026-07-13 supplement: Shopee, Lazada, and TikTok Shop adaptation is now organized in `docs/MARKETPLACE_PLATFORM_ADAPTERS.md`. The plan keeps seller exports, visible-page capture, browser-assisted extraction, future API sync, and scheduled jobs behind the same data source adapter contract.
 
-2026-07-15 supplement: a ToB demand exploration page is now visible in the frontend. It recommends target countries and cities for a product intent such as `钓鱼竿`, and generates low-frequency map/review/search tasks for public store contact discovery. Store lead parsing and CRM follow-up remain next gaps.
+2026-07-15 supplement: a ToB demand exploration page is now visible in the frontend. It recommends target countries and cities for a product intent such as `钓鱼竿`, generates low-frequency map/review/search tasks for public store contact discovery, and parses pasted visible-page/store-directory text into a local store lead pool. CRM follow-up remains the next gap.
 
 | Area | Frontend status | MVP status | Notes |
 | --- | --- | --- | --- |
@@ -61,7 +61,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 | Data source registry | 数据导入 | 已完成 | Manual upload and future API candidates are managed together. |
 | Marketplace platform adapter plan | 文档 / 数据导入 | 已完成 | Shopee, Lazada, and TikTok Shop adaptation phases, fields, source modes, credential rules, and acceptance criteria are documented. |
 | ToB demand exploration | 需求探查 | 已完成 | Product/category input generates target-country recommendations, customer types, cities, and map/review/search collection tasks. |
-| Store lead pool | 前端尚未形成独立入口 | 待补 | Need parser/import for visible map/review/directory rows, dedupe, scoring, and follow-up status. |
+| Store lead pool | 需求探查 | 已完成 | Visible map/review/directory/search text can be pasted, parsed, previewed, confirmed, scored, deduped, removed if mistaken, and kept in a local lead pool. |
 | B2B sales follow-up | 前端尚未形成独立入口 | 待补 | Need CRM statuses, owner, notes, outreach channel, templates, and opt-out/suppression handling. |
 | KPI weekly review | 经营复盘 | 待补 | Needs stronger KPI dashboard for GMV, margin, test outcome, supplier issues, and logistics exceptions. |
 | Strategy action workflow | 多页面 | 待补 | Recommendations are visible, but approve/reject/execute workflow is not yet formalized. |
@@ -99,15 +99,14 @@ If a feature is only documented but not visible in the frontend, it should appea
 1. Real marketplace URL/platform parsing is not connected. Yiwugo public list discovery exists, but other platforms such as 1688 still need manual upload, logged-in browser assistance, or API access.
 2. Platform-specific seller export mapping presets for Shopee, Lazada, and TikTok Shop are not implemented yet.
 3. Browser-assisted marketplace capture is documented but not implemented.
-4. Store lead pool and visible-page lead parser are not implemented yet.
-5. B2B CRM follow-up workflow is not implemented yet.
-6. Cost templates need platform/country/category provenance so every fee can show its source.
-7. Competitor price collection is visible and local, but true automated logged-in browser extraction, official marketplace API access, and third-party market data providers still need compliance and account-access review.
-8. Supplier discovery refresh is manual in the local MVP; background schedules need a hosted job runner later.
-9. KPI weekly review needs clearer metrics and test outcome tracking.
-10. Strategy recommendations need an approval/action log.
-11. Shipment tracking is simulated; real carrier/platform sync is deferred.
-12. Multi-user permissions and backend persistence are intentionally out of scope for the local MVP.
+4. B2B CRM follow-up workflow is not implemented yet.
+5. Cost templates need platform/country/category provenance so every fee can show its source.
+6. Competitor price collection is visible and local, but true automated logged-in browser extraction, official marketplace API access, and third-party market data providers still need compliance and account-access review.
+7. Supplier discovery refresh is manual in the local MVP; background schedules need a hosted job runner later.
+8. KPI weekly review needs clearer metrics and test outcome tracking.
+9. Strategy recommendations need an approval/action log.
+10. Shipment tracking is simulated; real carrier/platform sync is deferred.
+11. Multi-user permissions and backend persistence are intentionally out of scope for the local MVP.
 
 ## Operating Rule
 

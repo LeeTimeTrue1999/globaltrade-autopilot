@@ -264,6 +264,8 @@ const state = {
   discoveryCandidates: [],
   demandResearches: [],
   leadSearchTasks: [],
+  storeLeads: [],
+  storeLeadDraft: null,
   selectedDemandResearchId: null,
   yiwugoCandidates: [],
   competitorSnapshots: [],
@@ -588,6 +590,8 @@ function buildWorkspaceSnapshot() {
     discoveryCandidates: state.discoveryCandidates,
     demandResearches: state.demandResearches,
     leadSearchTasks: state.leadSearchTasks,
+    storeLeads: state.storeLeads,
+    storeLeadDraft: state.storeLeadDraft,
     selectedDemandResearchId: state.selectedDemandResearchId,
     yiwugoCandidates: state.yiwugoCandidates,
     competitorSnapshots: state.competitorSnapshots,
@@ -616,6 +620,8 @@ function applyWorkspaceSnapshot(saved) {
   state.discoveryCandidates = Array.isArray(saved.discoveryCandidates) ? saved.discoveryCandidates : [];
   state.demandResearches = Array.isArray(saved.demandResearches) ? saved.demandResearches : [];
   state.leadSearchTasks = Array.isArray(saved.leadSearchTasks) ? saved.leadSearchTasks : [];
+  state.storeLeads = Array.isArray(saved.storeLeads) ? saved.storeLeads : [];
+  state.storeLeadDraft = saved.storeLeadDraft || null;
   state.selectedDemandResearchId = saved.selectedDemandResearchId || null;
   state.yiwugoCandidates = Array.isArray(saved.yiwugoCandidates) ? saved.yiwugoCandidates : [];
   state.competitorSnapshots = Array.isArray(saved.competitorSnapshots) ? saved.competitorSnapshots : [];
@@ -1045,7 +1051,11 @@ function auditActionLabel(action) {
     "yiwugo.candidate_added": "加入义乌购供应商候选",
     "supplier_discovery.config_updated": "更新供应商发现规则",
     "b2b.demand_research_created": "创建 ToB 需求探查",
-    "b2b.lead_task_status_updated": "更新线索采集任务"
+    "b2b.lead_task_status_updated": "更新线索采集任务",
+    "b2b.store_leads_previewed": "预览店铺线索",
+    "b2b.store_leads_confirmed": "确认店铺线索",
+    "b2b.store_lead_status_updated": "更新店铺线索状态",
+    "b2b.store_lead_removed": "移除店铺线索"
   };
   Object.assign(labels, {
     "competitor.previewed": "预览竞品价格",
@@ -1524,6 +1534,194 @@ function updateLeadSearchTaskStatus(taskId, status) {
   render();
 }
 
+function normalizeLeadPhone(text) {
+  const phone = String(text || "").match(/(?:\+?\d[\d\s().-]{6,}\d)|(?:0\d{2,4}[-\s]?\d{6,8})|(?:1[3-9]\d{9})/);
+  return phone ? phone[0].replace(/\s{2,}/g, " ").trim() : "";
+}
+
+function extractLeadUrl(text) {
+  return (String(text || "").match(/https?:\/\/[^\s,，)）]+/i) || [])[0] || "";
+}
+
+function extractLeadRating(text) {
+  const rating = String(text || "").match(/(?:评分|rating|stars?)[:：\s]*([1-5](?:\.\d)?)/i) || String(text || "").match(/\b([1-5]\.\d)\b/);
+  return rating ? Number(rating[1]) : null;
+}
+
+function extractReviewCount(text) {
+  const review = String(text || "").match(/(?:评论|评价|reviews?)[:：\s]*(\d{1,6})/i) || String(text || "").match(/(\d{1,6})\s*(?:条评论|reviews?)/i);
+  return review ? Number(review[1]) : null;
+}
+
+function leadScoreForCandidate(candidate) {
+  let value = 25;
+  if (candidate.businessName) value += 10;
+  if (candidate.phone) value += 20;
+  if (candidate.website || candidate.sourceUrl) value += 12;
+  if (candidate.address) value += 12;
+  if (candidate.rating && candidate.rating >= 4) value += 8;
+  if (candidate.reviewCount && candidate.reviewCount >= 20) value += 8;
+  if (candidate.businessType && candidate.businessName && candidate.businessName.includes(candidate.businessType.slice(0, 2))) value += 5;
+  return Math.min(100, value);
+}
+
+function splitLeadBlocks(rawText) {
+  const text = String(rawText || "").replace(/\r/g, "").trim();
+  if (!text) return [];
+  const blocks = text
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  if (blocks.length > 1) return blocks;
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+function parseStoreLeadCandidates(rawText, context) {
+  const blocks = splitLeadBlocks(rawText);
+  const candidates = blocks
+    .map((block, index) => {
+      const parts = block
+        .split(/\t|\||,|，/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+      const lines = block
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const firstText = parts[0] || lines[0] || `店铺线索 ${index + 1}`;
+      const phone = normalizeLeadPhone(block);
+      const url = extractLeadUrl(block);
+      const rating = extractLeadRating(block);
+      const reviewCount = extractReviewCount(block);
+      const address =
+        parts.find((part) => /路|街|区|市|省|road|street|avenue|bangkok|manila|hanoi|jakarta|city/i.test(part) && part !== firstText) ||
+        lines.find((line) => /地址|address|road|street|区|市|จังหวัด|ถนน/i.test(line)) ||
+        "";
+      const businessName = firstText.replace(/^店名[:：]\s*/, "").slice(0, 100);
+      const candidate = {
+        id: `lead-candidate-${Date.now()}-${index}`,
+        productIntent: context.productIntent,
+        country: context.country,
+        city: context.city,
+        businessName,
+        businessType: context.targetCustomerType,
+        address: address.replace(/^地址[:：]\s*/i, "").slice(0, 180),
+        phone,
+        website: url,
+        socialUrl: /facebook|instagram|line|whatsapp/i.test(url) ? url : "",
+        sourceUrl: context.sourceUrl || url,
+        rating,
+        reviewCount,
+        sourcePlatform: context.sourcePlatform,
+        sourceMode: "visible_page_capture",
+        sourceKeyword: context.keyword,
+        collectedAt: new Date().toISOString(),
+        confidenceLevel: phone || url ? "B" : "C",
+        matchReason: `${context.keyword || context.productIntent} 可见页结果，目标客户类型为 ${context.targetCustomerType}`,
+        leadScore: 0,
+        status: "待确认",
+        rawText: block.slice(0, 600)
+      };
+      candidate.leadScore = leadScoreForCandidate(candidate);
+      return candidate;
+    })
+    .filter((candidate) => candidate.businessName && candidate.businessName.length > 1);
+
+  const unique = new Map();
+  candidates.forEach((candidate) => {
+    const key = `${candidate.businessName}-${candidate.phone || candidate.address || candidate.sourceUrl}`.toLowerCase();
+    if (!unique.has(key)) unique.set(key, candidate);
+  });
+  return [...unique.values()].slice(0, 80);
+}
+
+function previewStoreLeadCollection(form) {
+  const formData = new FormData(form);
+  const taskId = String(formData.get("taskId") || "");
+  const task = state.leadSearchTasks.find((item) => item.id === taskId);
+  const productIntent = String(formData.get("productIntent") || task?.productIntent || "").trim();
+  const context = {
+    taskId,
+    productIntent,
+    country: String(formData.get("country") || task?.country || "").trim(),
+    city: String(formData.get("city") || task?.city || "").trim(),
+    sourcePlatform: String(formData.get("sourcePlatform") || task?.platform || "").trim(),
+    keyword: String(formData.get("keyword") || task?.keyword || "").trim(),
+    targetCustomerType: String(formData.get("targetCustomerType") || task?.targetCustomerType || "").trim(),
+    sourceUrl: String(formData.get("sourceUrl") || "").trim()
+  };
+  const rawText = String(formData.get("rawText") || "");
+  const candidates = parseStoreLeadCandidates(rawText, context);
+  state.storeLeadDraft = {
+    id: `store-lead-draft-${Date.now()}`,
+    ...context,
+    rawText: rawText.slice(0, 12000),
+    candidates,
+    createdAt: new Date().toISOString()
+  };
+  logAction("b2b.store_leads_previewed", { productIntent, count: candidates.length, keyword: context.keyword });
+  saveWorkspaceState();
+  render();
+}
+
+function confirmStoreLeadCollection() {
+  const draft = state.storeLeadDraft;
+  if (!draft?.candidates?.length) return;
+  const existingKeys = new Set(
+    state.storeLeads.map((lead) => `${lead.businessName}-${lead.phone || lead.address || lead.sourceUrl}`.toLowerCase())
+  );
+  const confirmedAt = new Date().toISOString();
+  const newLeads = draft.candidates
+    .filter((candidate) => !existingKeys.has(`${candidate.businessName}-${candidate.phone || candidate.address || candidate.sourceUrl}`.toLowerCase()))
+    .map((candidate) => ({
+      ...candidate,
+      id: `store-lead-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      status: "待联系",
+      confirmedAt
+    }));
+  state.storeLeads = [...newLeads, ...state.storeLeads].slice(0, 500);
+  if (draft.taskId) {
+    const task = state.leadSearchTasks.find((item) => item.id === draft.taskId);
+    if (task) {
+      task.status = "已采集";
+      task.collectedLeadCount = (task.collectedLeadCount || 0) + newLeads.length;
+      task.updatedAt = confirmedAt;
+    }
+  }
+  logAction("b2b.store_leads_confirmed", { count: newLeads.length, keyword: draft.keyword });
+  state.storeLeadDraft = null;
+  saveWorkspaceState();
+  render();
+}
+
+function discardStoreLeadDraft() {
+  state.storeLeadDraft = null;
+  saveWorkspaceState();
+  render();
+}
+
+function updateStoreLeadStatus(leadId, status) {
+  const lead = state.storeLeads.find((item) => item.id === leadId);
+  if (!lead) return;
+  lead.status = status;
+  lead.updatedAt = new Date().toISOString();
+  logAction("b2b.store_lead_status_updated", { leadId, status, businessName: lead.businessName });
+  saveWorkspaceState();
+  render();
+}
+
+function removeStoreLead(leadId) {
+  const lead = state.storeLeads.find((item) => item.id === leadId);
+  if (!lead) return;
+  state.storeLeads = state.storeLeads.filter((item) => item.id !== leadId);
+  logAction("b2b.store_lead_removed", { leadId, businessName: lead.businessName });
+  saveWorkspaceState();
+  render();
+}
+
 function renderDemandCountryCard(country) {
   return `
     <article class="opportunity-card">
@@ -1551,6 +1749,9 @@ function renderDemandResearch() {
   if (selected && state.selectedDemandResearchId !== selected.id) state.selectedDemandResearchId = selected.id;
   const tasks = selected ? state.leadSearchTasks.filter((task) => task.researchId === selected.id) : [];
   const readyTasks = tasks.filter((task) => task.status === "待采集").length;
+  const selectedTask = tasks.find((task) => task.status === "待采集") || tasks[0] || {};
+  const relatedLeads = selected ? state.storeLeads.filter((lead) => lead.productIntent === selected.productIntent) : state.storeLeads;
+  const draft = state.storeLeadDraft;
   const targetCountries = selected?.countries.length || 0;
   const targetCities = selected ? new Set(tasks.map((task) => `${task.country}-${task.city}`)).size : 0;
 
@@ -1565,6 +1766,7 @@ function renderDemandResearch() {
       ${metricCard("推荐国家", targetCountries, "当前项目建议优先验证的国家")}
       ${metricCard("目标城市", targetCities, "会生成定点搜索任务的城市")}
       ${metricCard("待采集任务", readyTasks, "下一步进入地图/点评可见页采集")}
+      ${metricCard("店铺线索", state.storeLeads.length, "已确认进入本地线索池")}
     </div>
 
     <section class="panel">
@@ -1675,6 +1877,161 @@ function renderDemandResearch() {
                   .join("")}
               </tbody>
             </table>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">可见页采集</p>
+                <h2>粘贴地图/点评/目录结果，解析店铺线索</h2>
+              </div>
+              <span class="muted">先预览，确认后才进入线索池。</span>
+            </div>
+            <form class="panel-body competitor-form lead-collection-form" data-store-lead-form>
+              <label>
+                关联任务
+                <select name="taskId">
+                  ${tasks
+                    .slice(0, 36)
+                    .map(
+                      (task) => `<option value="${h(task.id)}" ${task.id === selectedTask.id ? "selected" : ""}>${h(task.country)} / ${h(task.city)} / ${h(task.keyword)}</option>`
+                    )
+                    .join("")}
+                </select>
+              </label>
+              <label>
+                商品意图
+                <input name="productIntent" type="text" value="${h(selected.productIntent)}">
+              </label>
+              <label>
+                来源平台
+                <input name="sourcePlatform" type="text" value="${h(selectedTask.platform || "Google Maps")}" placeholder="Google Maps / 高德地图 / 大众点评">
+              </label>
+              <label>
+                国家
+                <input name="country" type="text" value="${h(selectedTask.country || selected.countries[0]?.country || "")}">
+              </label>
+              <label>
+                城市
+                <input name="city" type="text" value="${h(selectedTask.city || selected.countries[0]?.cities?.[0] || "")}">
+              </label>
+              <label>
+                搜索关键词
+                <input name="keyword" type="text" value="${h(selectedTask.keyword || "")}">
+              </label>
+              <label>
+                目标客户
+                <input name="targetCustomerType" type="text" value="${h(selectedTask.targetCustomerType || selected.countries[0]?.customerTypes?.[0] || "")}">
+              </label>
+              <label class="wide-field">
+                来源 URL，可选
+                <input name="sourceUrl" type="url" placeholder="地图、点评、行业目录或搜索结果页面 URL">
+              </label>
+              <label class="wide-field">
+                粘贴可见内容
+                <textarea name="rawText" rows="10" placeholder="支持一行一个店铺，或用空行分隔店铺块。例如：&#10;ABC Fishing Tackle | +66 2 123 4567 | Bangkok | 4.5 | 128 reviews | https://...&#10;曼谷渔具店 地址：Bangkok 电话：+66... 评分：4.3 评论：52"></textarea>
+              </label>
+              <div class="form-actions wide-field">
+                <button class="primary-button" type="submit">解析店铺线索</button>
+                <button class="small-button" type="button" data-discard-store-leads>清空预览</button>
+              </div>
+            </form>
+          </section>
+          ${
+            draft
+              ? `<section class="panel">
+                  <div class="panel-header">
+                    <div>
+                      <p class="eyebrow">待确认</p>
+                      <h2>店铺线索预览</h2>
+                    </div>
+                    <div class="tag-row">
+                      <span class="tag ${draft.candidates.length > 0 ? "good" : "warning"}">${draft.candidates.length} 条</span>
+                      <span class="tag info">${h(draft.sourcePlatform || "未标注来源")}</span>
+                    </div>
+                  </div>
+                  <div class="panel-body detail-stack">
+                    ${
+                      draft.candidates.length === 0
+                        ? `<div class="message-list warning"><p>没有解析到店铺线索。请粘贴店名、电话、地址、链接、评分等当前可见内容；一行一个店铺或用空行分隔。</p></div>`
+                        : `<div class="table-scroll">
+                            <table class="compact-table">
+                              <thead><tr><th>店铺</th><th>联系方式</th><th>地址/来源</th><th>评分</th><th>线索分</th></tr></thead>
+                              <tbody>
+                                ${draft.candidates
+                                  .map(
+                                    (lead) => `
+                                      <tr>
+                                        <td><strong>${h(lead.businessName)}</strong><br><span class="muted">${h(lead.businessType)} / ${h(lead.city)}</span></td>
+                                        <td>${h(lead.phone || "待补公开电话")}<br><span class="muted">${h(lead.website || lead.socialUrl || "待补网站/社媒")}</span></td>
+                                        <td class="wide-note">${h(lead.address || lead.sourceUrl || lead.rawText)}</td>
+                                        <td>${lead.rating || "-"}<br><span class="muted">${lead.reviewCount ? `${lead.reviewCount} 评论` : "评论数待补"}</span></td>
+                                        <td><span class="score-badge">${h(lead.leadScore)}</span></td>
+                                      </tr>
+                                    `
+                                  )
+                                  .join("")}
+                              </tbody>
+                            </table>
+                          </div>`
+                    }
+                    <div class="form-actions">
+                      <button class="primary-button" type="button" data-confirm-store-leads ${draft.candidates.length > 0 ? "" : "disabled"}>确认加入线索池</button>
+                      <button class="small-button" type="button" data-discard-store-leads>放弃预览</button>
+                    </div>
+                  </div>
+                </section>`
+              : ""
+          }
+          <section class="table-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">线索池</p>
+                <h2>已确认店铺线索</h2>
+              </div>
+              <span class="muted">下一步 T-051 会把这里接成 CRM 跟进流。</span>
+            </div>
+            <div class="table-scroll">
+              <table class="compact-table">
+                <thead>
+                  <tr>
+                    <th>店铺</th>
+                    <th>国家/城市</th>
+                    <th>联系方式</th>
+                    <th>来源</th>
+                    <th>线索分</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    relatedLeads.length === 0
+                      ? `<tr><td colspan="7" class="muted">还没有确认店铺线索。先从地图/点评/目录页复制可见结果并解析。</td></tr>`
+                      : relatedLeads
+                          .slice(0, 80)
+                          .map(
+                            (lead) => `
+                              <tr>
+                                <td><strong>${h(lead.businessName)}</strong><br><span class="muted">${h(lead.businessType)}</span></td>
+                                <td>${h(lead.country)}<br><span class="muted">${h(lead.city)}</span></td>
+                                <td>${h(lead.phone || "待补公开电话")}<br><span class="muted">${h(lead.website || lead.socialUrl || "-")}</span></td>
+                                <td>${h(lead.sourcePlatform)}<br><span class="muted">${h(lead.sourceKeyword)}</span></td>
+                                <td><span class="score-badge">${h(lead.leadScore)}</span></td>
+                                <td><span class="tag ${statusClass(lead.status)}">${h(lead.status)}</span></td>
+                                <td>
+                                  <select class="inline-select" data-store-lead-status="${h(lead.id)}">
+                                    ${["待联系", "已联系", "有意向", "报价中", "成交", "无效"].map((status) => `<option value="${status}" ${lead.status === status ? "selected" : ""}>${status}</option>`).join("")}
+                                  </select>
+                                  <button class="small-button" type="button" data-remove-store-lead="${h(lead.id)}">移除</button>
+                                </td>
+                              </tr>
+                            `
+                          )
+                          .join("")
+                  }
+                </tbody>
+              </table>
+            </div>
           </section>
         `
         : `<section class="panel"><div class="panel-body"><p class="muted">还没有需求探查项目。输入商品后，系统会先推荐国家和城市，再生成地图/点评搜索任务。</p></div></section>`
@@ -4360,6 +4717,11 @@ function resetLocalWorkspace() {
   replaceArray(listingDrafts, INITIAL_WORKSPACE.listingDrafts);
   replaceArray(orders, INITIAL_WORKSPACE.orders);
   state.discoveryCandidates = [];
+  state.demandResearches = [];
+  state.leadSearchTasks = [];
+  state.storeLeads = [];
+  state.storeLeadDraft = null;
+  state.selectedDemandResearchId = null;
   state.yiwugoCandidates = [];
   state.competitorSnapshots = [];
   state.competitorDraft = null;
@@ -4658,6 +5020,33 @@ function bindDynamicEvents() {
   document.querySelectorAll("[data-lead-task-status]").forEach((button) => {
     button.addEventListener("click", () => {
       updateLeadSearchTaskStatus(button.dataset.leadTaskStatus, button.dataset.status);
+    });
+  });
+
+  document.querySelectorAll("[data-store-lead-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      previewStoreLeadCollection(form);
+    });
+  });
+
+  document.querySelectorAll("[data-confirm-store-leads]").forEach((button) => {
+    button.addEventListener("click", confirmStoreLeadCollection);
+  });
+
+  document.querySelectorAll("[data-discard-store-leads]").forEach((button) => {
+    button.addEventListener("click", discardStoreLeadDraft);
+  });
+
+  document.querySelectorAll("[data-store-lead-status]").forEach((select) => {
+    select.addEventListener("change", () => {
+      updateStoreLeadStatus(select.dataset.storeLeadStatus, select.value);
+    });
+  });
+
+  document.querySelectorAll("[data-remove-store-lead]").forEach((button) => {
+    button.addEventListener("click", () => {
+      removeStoreLead(button.dataset.removeStoreLead);
     });
   });
 
