@@ -35,8 +35,10 @@ Priority values:
 
 ### Operations Platform
 
-Daily operating surface based on existing data:
+Daily operating surface based on existing data and B2B lead intent:
 
+- ToB demand exploration by product/category.
+- Target-country and target-city lead search tasks.
 - Dashboard and opportunity pool.
 - Opportunity scoring and recommended action.
 - Listing drafts and manual review.
@@ -47,6 +49,7 @@ Daily operating surface based on existing data:
 
 Manual confirmation, configuration, and data governance surface:
 
+- B2B lead source rules for maps, review platforms, directories, and visible-page capture.
 - Data import and preview.
 - Field mapping rules.
 - Data source adapter registry for manual uploads and future API sync.
@@ -108,6 +111,9 @@ Manual confirmation, configuration, and data governance surface:
 | T-046 | P1 | Platform adapters | done | Organize Shopee, Lazada, and TikTok Shop adapter plan | Added `docs/MARKETPLACE_PLATFORM_ADAPTERS.md` covering source modes, domain mapping, credential rules, implementation phases, and production acceptance criteria; linked it from data source and API contracts. |
 | T-047 | P1 | Platform adapters | todo | Add Shopee/Lazada/TikTok Shop seller export mapping presets | Build platform-specific CSV/Excel mapping presets for product, order, shipment, and ad/report exports so manual seller-center data enters the canonical schemas faster. |
 | T-048 | P1 | Platform adapters | todo | Add browser-assisted visible marketplace capture | Operator opens Shopee/Lazada/TikTok Shop pages and explicitly extracts visible title, price, sold/rating, URL, and rank into the same preview-confirm competitor evidence flow. |
+| T-049 | P0 | B2B lead generation | done | Add demand exploration board | Added a ToB demand exploration page and `docs/B2B_LEAD_GENERATION_PLAN.md`; users can input a product/category, get target-country recommendations, and generate low-frequency map/review/search tasks for public store contact discovery. |
+| T-050 | P0 | B2B lead generation | todo | Add store lead pool and visible-page lead parser | Parse pasted/visible map, review platform, directory, or search-result rows into store leads with name, address, public contact, source URL, confidence, score, and follow-up status. |
+| T-051 | P1 | CRM | todo | Add B2B sales follow-up workflow | Manage lead statuses, contact notes, owner, outreach channel, message templates, quote/sample follow-up, and opt-out/suppression rules. |
 
 ## Decisions To Make
 
@@ -138,6 +144,8 @@ Manual confirmation, configuration, and data governance surface:
 - Competitor price snapshots: local MVP stores manually confirmed visible-page/CSV samples, source platform, country, keyword, source URL, sample prices, CNY price band, confirmation time, and linked market product.
 - Data source adapter envelopes: every manual upload, visible-page capture, public discovery result, browser-assisted extraction, or future API sync should preserve adapter id, source id, mode, domain, entity type, schema version, collected time, operator, confidence level, source provenance, field mapping, raw rows, normalized rows, row quality, and summary counts.
 - Marketplace platform adapter data: Shopee, Lazada, and TikTok Shop sources should normalize seller exports, visible page captures, browser-assisted captures, API sync batches, product/listing rows, orders, shipments, ads, shop metrics, and competitor price evidence through the same adapter envelope.
+- B2B demand exploration data: product intent, inferred customer types, target countries, target cities, demand signals, recommended search keywords, source platforms, suggested per-task limits, and task status.
+- B2B store leads: store name, business type, country, city, address, public phone/email/website/social URL, map/review/source URL, rating, review count, source keyword, source mode, confidence, match reason, lead score, and sales follow-up status.
 - Localized listing content: translated title, attributes/specs, keywords, selling points, asset/spec readiness, compliance notes, reviewer status, and publish-readiness status.
 - Orders: CSV/Excel upload now; platform API remains optional.
 - Shipment tasks: generated from local orders now; future platform shipment callback and logistics tracking sync remain optional integrations.
@@ -166,6 +174,7 @@ Only revisit server resources after the team decides how data is acquired and sh
 | --- | --- | --- | --- |
 | 2026-07-13 | Added local listing translation/localization workflow in the listing draft workbench. Drafts now have editable target title, keywords, attributes/specs, selling points, asset status, and compliance notes, with local status and audit updates after saving. | `node --check app/src/app.js`; `node --check scripts/serve.js`; `npm.cmd test`; in-app browser check for listing localization form, save, reload persistence, console errors, and narrow-width overflow. | Existing untracked `docs/codex.code-workspace` left untouched. |
 | 2026-07-13 | Organized Shopee, Lazada, and TikTok Shop platform adaptation into a formal adapter plan. | Documentation review; contract references updated in `docs/DATA_SOURCE_ADAPTER_CONTRACT.md` and `docs/API_CONTRACT.md`. | Platform API implementation remains deferred until developer accounts, scopes, token storage, and backend job requirements are confirmed. |
+| 2026-07-15 | Pivoted planning toward ToB merchant lead discovery. Added a demand exploration board that turns product intent into target-country recommendations and low-frequency map/review/search tasks, plus `docs/B2B_LEAD_GENERATION_PLAN.md`. | `node --check app/src/app.js`; `node --check scripts/serve.js`; `npm.cmd test`; in-app browser check for nav, demand generation, task status update, reload persistence, console errors, and horizontal overflow. | Store lead pool and CRM follow-up are split into T-050 and T-051. Existing untracked `docs/codex.code-workspace` left untouched. |
 | 2026-07-11 | Added CSV/Excel-compatible import templates, validation, staging preview, import history, data quality pool, localStorage persistence, field mapping, supplier matching page, and logistics management page. | `npm.cmd test`; browser DOM check for management pages. | Existing unrelated `README.md` and `docs/CROSS_BORDER_OPERATIONS_REVIEW.md` changes were present before this TODO document work. |
 | 2026-07-11 | Added backend persistence design for import batches, field mappings, original file object storage, supplier matches, logistics rate cards, users/roles, and audit logs. Updated API contract and README references. | Documentation review only; no code tests required. | Implementation remains TODO via T-021, T-022, and T-023. Existing app changes and `docs/CROSS_BORDER_OPERATIONS_REVIEW.md` were left untouched. |
 | 2026-07-11 | Added local MVP workspace backup/restore, import batch rollback, editable cost/FX config, local audit logs, local parsed import record retention, and order import template/validation. | `npm.cmd test`; `node --check app/src/app.js`; `node --check app/src/import-utils.js`. `npm.cmd run build` unavailable because no build script exists. | Backend object storage, effective-dated cost snapshots, and append-only audit middleware remain future backend tasks. |

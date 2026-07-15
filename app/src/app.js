@@ -113,6 +113,85 @@ const DATA_SOURCE_ADAPTER_CONTRACTS = [
     credentialRule: "需要后端 secret store，不能放 localStorage"
   }
 ];
+
+const B2B_DEMAND_COUNTRY_PROFILES = [
+  {
+    country: "泰国",
+    region: "东南亚",
+    cities: ["曼谷", "清迈", "普吉", "春武里"],
+    demandSignals: ["旅游和户外消费活跃", "线下零售密度高", "社媒和地图商家信息较丰富"],
+    retailKeywords: ["fishing tackle shop", "outdoor shop", "sporting goods store", "camping store"],
+    baseScore: 86
+  },
+  {
+    country: "越南",
+    region: "东南亚",
+    cities: ["胡志明市", "河内", "岘港", "海防"],
+    demandSignals: ["年轻消费群体增长", "本地零售店铺分散", "适合批发和经销商触达"],
+    retailKeywords: ["fishing store", "outdoor equipment", "sports shop", "wholesale fishing gear"],
+    baseScore: 82
+  },
+  {
+    country: "菲律宾",
+    region: "东南亚",
+    cities: ["马尼拉", "宿务", "达沃", "奎松市"],
+    demandSignals: ["海岛和休闲垂钓场景多", "英文商家信息较多", "电话和社媒触达相对友好"],
+    retailKeywords: ["fishing tackle", "marine supply", "outdoor store", "sports retailer"],
+    baseScore: 84
+  },
+  {
+    country: "印尼",
+    region: "东南亚",
+    cities: ["雅加达", "泗水", "万隆", "棉兰"],
+    demandSignals: ["人口基数大", "线下零售和批发渠道多", "需要更强去重和城市分批采集"],
+    retailKeywords: ["toko pancing", "alat pancing", "outdoor store", "sports shop"],
+    baseScore: 80
+  },
+  {
+    country: "马来西亚",
+    region: "东南亚",
+    cities: ["吉隆坡", "槟城", "新山", "怡保"],
+    demandSignals: ["英语信息可读性较好", "户外和休闲消费稳定", "适合小批量验证"],
+    retailKeywords: ["fishing shop", "tackle store", "outdoor gear", "sports equipment"],
+    baseScore: 78
+  },
+  {
+    country: "美国",
+    region: "北美",
+    cities: ["洛杉矶", "休斯顿", "迈阿密", "西雅图"],
+    demandSignals: ["垂钓用品市场成熟", "店铺联系方式公开度高", "竞争和合规要求更高"],
+    retailKeywords: ["fishing tackle shop", "bait and tackle", "outdoor sporting goods", "marine supply"],
+    baseScore: 76
+  }
+];
+
+const B2B_CUSTOMER_TYPE_RULES = [
+  {
+    match: ["钓鱼", "鱼竿", "渔具", "fishing", "tackle"],
+    productIntent: "钓鱼用品",
+    customerTypes: ["钓具店", "渔具批发商", "户外用品店", "体育用品店", "船艇/海钓用品店"],
+    searchTerms: ["钓具店", "渔具店", "fishing tackle shop", "bait and tackle", "outdoor sporting goods"]
+  },
+  {
+    match: ["宠物", "狗", "猫", "pet"],
+    productIntent: "宠物用品",
+    customerTypes: ["宠物店", "宠物用品零售店", "宠物美容店", "兽医诊所", "宠物用品批发商"],
+    searchTerms: ["宠物店", "pet store", "pet supplies", "pet grooming", "veterinary clinic"]
+  },
+  {
+    match: ["户外", "露营", "帐篷", "camping", "outdoor"],
+    productIntent: "户外用品",
+    customerTypes: ["户外用品店", "露营用品店", "体育用品店", "旅游用品店"],
+    searchTerms: ["户外用品店", "camping store", "outdoor gear", "sporting goods store"]
+  },
+  {
+    match: ["汽配", "汽车", "车载", "auto", "car"],
+    productIntent: "汽车用品",
+    customerTypes: ["汽配店", "汽车美容店", "汽车维修店", "汽车用品批发商"],
+    searchTerms: ["汽配店", "auto parts store", "car accessories", "auto repair shop"]
+  }
+];
+
 const managementViews = new Set([
   "dataSources",
   "products",
@@ -130,6 +209,7 @@ const viewTitles = {
   products: "商品管理",
   finance: "收入数据",
   dataSources: "数据源管理",
+  demandResearch: "需求探查",
   supplierMatching: "供应商匹配",
   logistics: "物流报价",
   dashboard: "总览",
@@ -182,6 +262,9 @@ const state = {
   selectedId: null,
   selectedDraftId: null,
   discoveryCandidates: [],
+  demandResearches: [],
+  leadSearchTasks: [],
+  selectedDemandResearchId: null,
   yiwugoCandidates: [],
   competitorSnapshots: [],
   competitorDraft: null,
@@ -219,6 +302,7 @@ const elements = {
   createDraftButton: document.querySelector("#createDraftButton"),
   views: {
     dashboard: document.querySelector("#dashboardView"),
+    demandResearch: document.querySelector("#demandResearchView"),
     dataSources: document.querySelector("#dataSourcesView"),
     products: document.querySelector("#productsView"),
     competitors: document.querySelector("#competitorsView"),
@@ -502,6 +586,9 @@ function buildWorkspaceSnapshot() {
     savedAt: new Date().toISOString(),
     config,
     discoveryCandidates: state.discoveryCandidates,
+    demandResearches: state.demandResearches,
+    leadSearchTasks: state.leadSearchTasks,
+    selectedDemandResearchId: state.selectedDemandResearchId,
     yiwugoCandidates: state.yiwugoCandidates,
     competitorSnapshots: state.competitorSnapshots,
     supplierDiscoveryConfigs: state.supplierDiscoveryConfigs,
@@ -527,6 +614,9 @@ function buildWorkspaceSnapshot() {
 function applyWorkspaceSnapshot(saved) {
   if (saved.config) replaceObject(config, saved.config);
   state.discoveryCandidates = Array.isArray(saved.discoveryCandidates) ? saved.discoveryCandidates : [];
+  state.demandResearches = Array.isArray(saved.demandResearches) ? saved.demandResearches : [];
+  state.leadSearchTasks = Array.isArray(saved.leadSearchTasks) ? saved.leadSearchTasks : [];
+  state.selectedDemandResearchId = saved.selectedDemandResearchId || null;
   state.yiwugoCandidates = Array.isArray(saved.yiwugoCandidates) ? saved.yiwugoCandidates : [];
   state.competitorSnapshots = Array.isArray(saved.competitorSnapshots) ? saved.competitorSnapshots : [];
   state.competitorDraft = null;
@@ -953,7 +1043,9 @@ function auditActionLabel(action) {
     "discovery.listing_draft_created": "生成上架草稿",
     "yiwugo.discovery.generated": "义乌购自动找货",
     "yiwugo.candidate_added": "加入义乌购供应商候选",
-    "supplier_discovery.config_updated": "更新供应商发现规则"
+    "supplier_discovery.config_updated": "更新供应商发现规则",
+    "b2b.demand_research_created": "创建 ToB 需求探查",
+    "b2b.lead_task_status_updated": "更新线索采集任务"
   };
   Object.assign(labels, {
     "competitor.previewed": "预览竞品价格",
@@ -1324,6 +1416,269 @@ function pageGuide(title, body, actions = []) {
           : ""
       }
     </section>
+  `;
+}
+
+function inferB2BCustomerRules(productIntent) {
+  const input = String(productIntent || "").toLowerCase();
+  return (
+    B2B_CUSTOMER_TYPE_RULES.find((rule) => rule.match.some((keyword) => input.includes(keyword.toLowerCase()))) ||
+    {
+      productIntent: productIntent || "通用商品",
+      customerTypes: ["专业零售店", "批发商", "经销商", "行业门店", "本地服务商"],
+      searchTerms: [productIntent || "retailer", `${productIntent || "product"} store`, `${productIntent || "product"} wholesale`]
+    }
+  );
+}
+
+function buildB2BDemandCountries(productIntent, targetRegion, selectedCountries) {
+  const rule = inferB2BCustomerRules(productIntent);
+  const wantedCountries = selectedCountries
+    .split(/[，,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const profiles = B2B_DEMAND_COUNTRY_PROFILES.filter((profile) => {
+    if (wantedCountries.length > 0) return wantedCountries.includes(profile.country);
+    if (targetRegion === "all") return true;
+    return profile.region === targetRegion;
+  });
+  return profiles
+    .map((profile, index) => {
+      const scoreBoost = rule.productIntent === "钓鱼用品" && ["泰国", "菲律宾", "印尼", "马来西亚", "美国"].includes(profile.country) ? 7 : 0;
+      const scoreValue = Math.min(96, profile.baseScore + scoreBoost - index);
+      return {
+        ...profile,
+        score: scoreValue,
+        scoreLabel: scoreValue >= 88 ? "优先验证" : scoreValue >= 80 ? "值得采集" : "观察补证据",
+        customerTypes: rule.customerTypes,
+        searchTerms: [...new Set([...rule.searchTerms, ...profile.retailKeywords])].slice(0, 7),
+        evidence: [
+          ...profile.demandSignals,
+          `目标客户类型：${rule.customerTypes.slice(0, 3).join("、")}`,
+          "需用地图/点评/行业目录采集公开联系方式验证真实店铺密度"
+        ]
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+}
+
+function buildLeadSearchTasks(research) {
+  const sourcePlatforms = ["Google Maps", "高德地图", "百度地图", "大众点评"];
+  return research.countries.flatMap((country) =>
+    country.cities.slice(0, 3).flatMap((city) =>
+      country.searchTerms.slice(0, 3).map((term, termIndex) => {
+        const platform = sourcePlatforms[termIndex % sourcePlatforms.length];
+        return {
+          id: `lead-task-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+          researchId: research.id,
+          productIntent: research.productIntent,
+          country: country.country,
+          city,
+          platform,
+          keyword: `${term} ${city}`,
+          targetCustomerType: country.customerTypes[termIndex % country.customerTypes.length],
+          status: "待采集",
+          collectionMode: platform === "大众点评" || platform.includes("地图") ? "可见页/低频定点采集" : "可见页/搜索结果采集",
+          suggestedLimit: 30,
+          createdAt: new Date().toISOString()
+        };
+      })
+    )
+  );
+}
+
+function createDemandResearch(form) {
+  const formData = new FormData(form);
+  const productIntent = String(formData.get("productIntent") || "").trim();
+  if (!productIntent) return;
+  const targetRegion = String(formData.get("targetRegion") || "东南亚");
+  const selectedCountries = String(formData.get("selectedCountries") || "");
+  const countries = buildB2BDemandCountries(productIntent, targetRegion, selectedCountries);
+  const research = {
+    id: `demand-${Date.now()}`,
+    productIntent,
+    targetRegion,
+    selectedCountries,
+    createdAt: new Date().toISOString(),
+    status: "待采集线索",
+    dataSources: ["搜索趋势/关键词", "地图 POI", "点评/本地生活平台", "行业目录", "网页搜索结果"],
+    countries
+  };
+  const tasks = buildLeadSearchTasks(research);
+  state.demandResearches = [research, ...state.demandResearches].slice(0, 20);
+  state.leadSearchTasks = [...tasks, ...state.leadSearchTasks].slice(0, 300);
+  state.selectedDemandResearchId = research.id;
+  logAction("b2b.demand_research_created", { productIntent, countryCount: countries.length, taskCount: tasks.length });
+  saveWorkspaceState();
+  render();
+}
+
+function updateLeadSearchTaskStatus(taskId, status) {
+  const task = state.leadSearchTasks.find((item) => item.id === taskId);
+  if (!task) return;
+  task.status = status;
+  task.updatedAt = new Date().toISOString();
+  logAction("b2b.lead_task_status_updated", { taskId, status, keyword: task.keyword });
+  saveWorkspaceState();
+  render();
+}
+
+function renderDemandCountryCard(country) {
+  return `
+    <article class="opportunity-card">
+      <div class="card-row">
+        <div>
+          <div class="card-title">${h(country.country)}</div>
+          <div class="card-meta">${h(country.region)} · ${h(country.scoreLabel)}</div>
+        </div>
+        <span class="score-badge">${score(country.score)}</span>
+      </div>
+      <div class="tag-row">
+        ${country.customerTypes.slice(0, 4).map((type) => `<span class="tag">${h(type)}</span>`).join("")}
+      </div>
+      <div class="data-grid compact-data-grid">
+        <div class="data-cell"><span>重点城市</span><strong>${h(country.cities.slice(0, 3).join(" / "))}</strong></div>
+        <div class="data-cell"><span>搜索词</span><strong>${h(country.searchTerms.slice(0, 3).join(" / "))}</strong></div>
+      </div>
+      <p class="muted">${h(country.evidence.join("；"))}</p>
+    </article>
+  `;
+}
+
+function renderDemandResearch() {
+  const selected = state.demandResearches.find((item) => item.id === state.selectedDemandResearchId) || state.demandResearches[0] || null;
+  if (selected && state.selectedDemandResearchId !== selected.id) state.selectedDemandResearchId = selected.id;
+  const tasks = selected ? state.leadSearchTasks.filter((task) => task.researchId === selected.id) : [];
+  const readyTasks = tasks.filter((task) => task.status === "待采集").length;
+  const targetCountries = selected?.countries.length || 0;
+  const targetCities = selected ? new Set(tasks.map((task) => `${task.country}-${task.city}`)).size : 0;
+
+  elements.views.demandResearch.innerHTML = `
+    ${pageGuide(
+      "ToB 需求探查",
+      "先通过网络需求信号判断哪些国家可能需要某类商品，再生成目标国家内的地图/点评/行业目录搜索任务。当前版本先做本地分析和低频定点采集任务，不自动绕过登录、验证码或隐藏联系方式。",
+      [{ view: "dataSources", label: "查看数据源规则" }]
+    )}
+    <div class="metrics-grid">
+      ${metricCard("需求项目", state.demandResearches.length, "已经创建的商品需求探查")}
+      ${metricCard("推荐国家", targetCountries, "当前项目建议优先验证的国家")}
+      ${metricCard("目标城市", targetCities, "会生成定点搜索任务的城市")}
+      ${metricCard("待采集任务", readyTasks, "下一步进入地图/点评可见页采集")}
+    </div>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">需求输入</p>
+          <h2>输入商品，生成国家需求判断</h2>
+        </div>
+      </div>
+      <form class="panel-body discovery-form demand-form" data-demand-form>
+        <label>
+          商品 / 类目
+          <input name="productIntent" type="text" value="钓鱼竿" placeholder="例如：钓鱼竿、宠物梳、露营灯、车载收纳">
+        </label>
+        <label>
+          目标区域
+          <select name="targetRegion">
+            <option value="东南亚">东南亚</option>
+            <option value="北美">北美</option>
+            <option value="all">全部样例国家</option>
+          </select>
+        </label>
+        <label class="wide-field">
+          指定国家，可选
+          <input name="selectedCountries" type="text" placeholder="例如：泰国,菲律宾,越南；为空则按区域推荐">
+        </label>
+        <button class="primary-button" type="submit">生成需求分析</button>
+      </form>
+    </section>
+
+    ${
+      selected
+        ? `
+          <div class="two-column">
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">国家判断</p>
+                  <h2>${h(selected.productIntent)} 的优先需求国家</h2>
+                </div>
+                <span class="tag info">${h(selected.status)}</span>
+              </div>
+              <div class="panel-body opportunity-list">
+                ${selected.countries.map(renderDemandCountryCard).join("")}
+              </div>
+            </section>
+            <section class="panel">
+              <div class="panel-header">
+                <div>
+                  <p class="eyebrow">采集任务</p>
+                  <h2>从国家需求转成店铺联系方式搜索</h2>
+                </div>
+              </div>
+              <div class="panel-body detail-stack">
+                ${detailRows([
+                  ["商品意图", selected.productIntent],
+                  ["需求信号来源", selected.dataSources.join(" / ")],
+                  ["采集原则", "低频、定点、公开可见、人工确认，不绕验证码或登录限制"],
+                  ["线索字段", "店名、地址、公开电话、官网/社媒、评分、评论数、来源 URL、关键词、采集时间"]
+                ])}
+                <div class="checklist-grid">
+                  <div class="check-item is-ok"><span>第 1 步</span><strong>需求国家</strong><p>用网络信号和场景规则筛出国家。</p></div>
+                  <div class="check-item is-ok"><span>第 2 步</span><strong>目标店铺</strong><p>转成钓具店、户外店、批发商等客户类型。</p></div>
+                  <div class="check-item is-missing"><span>第 3 步</span><strong>联系方式</strong><p>通过地图/点评/目录采集公开联系方式。</p></div>
+                  <div class="check-item is-missing"><span>第 4 步</span><strong>销售跟进</strong><p>进入线索池和 CRM 状态流转。</p></div>
+                </div>
+              </div>
+            </section>
+          </div>
+          <section class="table-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">低频定点采集</p>
+                <h2>地图 / 点评 / 搜索任务</h2>
+              </div>
+              <span class="muted">每个任务建议 20-30 条，合计一两百条足够验证。</span>
+            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th>国家 / 城市</th>
+                  <th>来源平台</th>
+                  <th>搜索关键词</th>
+                  <th>目标客户</th>
+                  <th>建议条数</th>
+                  <th>状态</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${tasks
+                  .slice(0, 36)
+                  .map(
+                    (task) => `
+                      <tr>
+                        <td><strong>${h(task.country)}</strong><br><span class="muted">${h(task.city)}</span></td>
+                        <td>${h(task.platform)}<br><span class="muted">${h(task.collectionMode)}</span></td>
+                        <td>${h(task.keyword)}</td>
+                        <td>${h(task.targetCustomerType)}</td>
+                        <td>${h(task.suggestedLimit)}</td>
+                        <td><span class="tag ${statusClass(task.status)}">${h(task.status)}</span></td>
+                        <td>
+                          <button class="small-button" type="button" data-lead-task-status="${h(task.id)}" data-status="已采集">标记已采集</button>
+                        </td>
+                      </tr>
+                    `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </section>
+        `
+        : `<section class="panel"><div class="panel-body"><p class="muted">还没有需求探查项目。输入商品后，系统会先推荐国家和城市，再生成地图/点评搜索任务。</p></div></section>`
+    }
   `;
 }
 
@@ -4293,6 +4648,19 @@ function bindDynamicEvents() {
     });
   });
 
+  document.querySelectorAll("[data-demand-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      createDemandResearch(form);
+    });
+  });
+
+  document.querySelectorAll("[data-lead-task-status]").forEach((button) => {
+    button.addEventListener("click", () => {
+      updateLeadSearchTaskStatus(button.dataset.leadTaskStatus, button.dataset.status);
+    });
+  });
+
   document.querySelectorAll("[data-add-discovery]").forEach((button) => {
     button.addEventListener("click", () => addDiscoveryToProductPool(button.dataset.addDiscovery));
   });
@@ -4385,6 +4753,7 @@ function render() {
 
   setActiveView();
   renderDashboard(opportunities);
+  renderDemandResearch();
   renderDataSourceManagement();
   renderProducts();
   renderCompetitorCollection();

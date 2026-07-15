@@ -397,6 +397,14 @@ h3 {
   align-items: end;
 }
 
+.demand-form {
+  grid-template-columns: minmax(220px, 1.2fr) minmax(160px, 0.8fr) minmax(220px, 1fr) auto;
+}
+
+.discovery-form .wide-field {
+  grid-column: auto;
+}
+
 .discovery-form label {
   display: grid;
   gap: 6px;
