@@ -12,7 +12,8 @@ Example:
 2. Demand exploration suggests Thailand, Philippines, Indonesia, Malaysia, and the United States.
 3. The system generates search tasks for fishing tackle shops, outdoor stores, marine supply stores, and sporting goods retailers.
 4. The system generates source plans for maps, review platforms, directories, and search engines.
-5. Operators open and record those external queries, bring source context into the parser, parse public store information, and confirm leads into a CRM-style follow-up flow.
+5. In the MVP, operators can also use one-click generation: enter a product intent and receive target store leads with source URLs and validation status.
+6. Production enrichment should use Google Places API, official POI APIs, or explicit browser-assisted extraction to fill real phone, website, rating, and address evidence.
 
 ## Core Workflow
 
@@ -22,9 +23,10 @@ flowchart LR
   B --> C["推荐国家和城市"]
   C --> D["生成地图/点评/目录搜索任务"]
   D --> E["自动生成信息源和解析规则"]
-  E --> F["打开外部来源并记录查询"]
-  F --> G["采集公开店铺信息"]
-  G --> H["线索池去重和评分"]
+  E --> F["一键生成待验证线索"]
+  E --> G["打开外部来源并记录查询"]
+  F --> H["线索池去重和评分"]
+  G --> H
   H --> I["销售跟进"]
   I --> J["报价/样品/成交复盘"]
 ```
@@ -40,6 +42,18 @@ The demand exploration module should combine multiple signals. In the local MVP,
 | Use-case fit | Whether the product fits climate, hobby, lifestyle, or business scenarios | Local category rules | Country/category research, social content, marketplace category data |
 | Import fit | Whether the country is plausible for imported wholesale goods | Operator assumption | Customs/import data, trade databases, freight data |
 | Contactability | Whether stores expose phone, website, email, WhatsApp, Line, or social pages | Manual or visible-page review | Browser-assisted extraction and verification |
+
+## One-Click MVP Behavior
+
+The local MVP now treats the product input as the main operating entry point:
+
+1. Infer the product type and target customer types.
+2. Recommend countries, cities, and search terms.
+3. Generate source plans for maps, review platforms, search, and directories.
+4. Record query runs for the generated source URLs.
+5. Create `待验证` store leads with source URLs and confidence `C`.
+
+These one-click leads are useful for workflow testing and sales list structuring, but they are not a substitute for real POI enrichment. Real contact fields should come from Google Places API, official local POI APIs, approved data providers, or explicit browser-assisted visible-page extraction.
 
 ## Lead Sources
 
@@ -149,6 +163,7 @@ The demand exploration module should combine multiple signals. In the local MVP,
 | 定点采集任务 | Store map/review/search tasks by product, country, city, platform, keyword, and suggested limit. |
 | 信息源自动发现 | Generate Google Maps, Baidu/Amap, Dianping, web search, and industry-directory source URLs with parser rules and safety boundaries. |
 | 外部查询记录 | Open generated source URLs, record query runs, prefill parser context, and write parsed/confirmed lead counts back to the source run. |
+| 一键线索生成 | Convert product intent into demand research, source plans, query runs, and `待验证` store leads with no extra operator step. |
 | 店铺线索池 | Parse/store business leads, dedupe, score, and manage source evidence after human confirmation. |
 | 销售跟进 | Future: status, owner, contact log, template messages, quote/sample follow-up. |
 | 数据源治理 | Reuse the existing adapter envelope for maps, visible pages, directories, manual uploads, and future APIs. |
@@ -161,6 +176,8 @@ The demand exploration module should combine multiple signals. In the local MVP,
 4. Add lead pool with dedupe and scoring. Done in local MVP.
 5. Add automatic source discovery plans with generated URLs and parser routing. Done in local MVP.
 6. Add external source query runs and parser handoff. Done in local MVP.
-7. Add browser-assisted visible source extraction from generated pages.
-8. Add CRM follow-up statuses and contact notes.
-9. Add message templates by language and product category.
+7. Add one-click semantic lead generation from product intent. Done in local MVP.
+8. Add Google Places API or approved POI API enrichment for real phone/website/rating/address fields.
+9. Add browser-assisted visible source extraction from generated pages.
+10. Add CRM follow-up statuses and contact notes.
+11. Add message templates by language and product category.

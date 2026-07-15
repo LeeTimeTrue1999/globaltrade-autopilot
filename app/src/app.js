@@ -255,6 +255,14 @@ const B2B_LEAD_SOURCE_PROFILES = [
   }
 ];
 
+const B2B_AUTO_LEAD_NAME_PARTS = {
+  钓鱼用品: ["Tackle", "Fishing Supply", "Outdoor Angler", "Marine Gear", "Bait & Tackle"],
+  宠物用品: ["Pet Supply", "Pet Care", "Pet Grooming", "Animal Clinic", "Pet Market"],
+  户外用品: ["Outdoor Gear", "Camping Supply", "Adventure Store", "Sports Outdoor", "Travel Gear"],
+  汽车用品: ["Auto Parts", "Car Accessories", "Auto Care", "Motor Supply", "Vehicle Service"],
+  default: ["Retail Supply", "Wholesale Hub", "Specialty Store", "Trade Center", "Local Distributor"]
+};
+
 const managementViews = new Set([
   "dataSources",
   "products",
@@ -574,6 +582,15 @@ mvpReadinessItems.splice(8, 0, {
   priority: "P0",
   note:
     "信息源可以打开来源并记录查询批次，带入解析表单后自动填充来源 URL、平台、国家城市和关键词；线索预览和确认会回写解析数量与入池数量。"
+});
+
+mvpReadinessItems.splice(9, 0, {
+  area: "B2B 一键线索生成",
+  surface: "需求探查",
+  status: "已完成",
+  priority: "P0",
+  note:
+    "输入想卖的商品后，可一键生成需求判断、来源计划、查询记录和待验证店铺线索；真实电话、评分和地址 enrichment 仍需 Google Places API 或浏览器可见页抽取。"
 });
 
 function statusRank(status) {
@@ -1146,6 +1163,7 @@ function auditActionLabel(action) {
     "b2b.lead_source_status_updated": "更新线索信息源状态",
     "b2b.lead_source_opened": "记录外部查询",
     "b2b.lead_source_parse_prepared": "带入外部查询解析",
+    "b2b.auto_leads_generated": "一键生成店铺线索",
     "b2b.store_leads_previewed": "预览店铺线索",
     "b2b.store_leads_confirmed": "确认店铺线索",
     "b2b.store_lead_status_updated": "更新店铺线索状态",
@@ -1592,12 +1610,8 @@ function buildLeadSearchTasks(research) {
   );
 }
 
-function createDemandResearch(form) {
-  const formData = new FormData(form);
-  const productIntent = String(formData.get("productIntent") || "").trim();
+function createDemandResearchFromInput(productIntent, targetRegion, selectedCountries) {
   if (!productIntent) return;
-  const targetRegion = String(formData.get("targetRegion") || "东南亚");
-  const selectedCountries = String(formData.get("selectedCountries") || "");
   const countries = buildB2BDemandCountries(productIntent, targetRegion, selectedCountries);
   const research = {
     id: `demand-${Date.now()}`,
@@ -1616,6 +1630,15 @@ function createDemandResearch(form) {
   logAction("b2b.demand_research_created", { productIntent, countryCount: countries.length, taskCount: tasks.length });
   saveWorkspaceState();
   render();
+  return { research, tasks };
+}
+
+function createDemandResearch(form) {
+  const formData = new FormData(form);
+  const productIntent = String(formData.get("productIntent") || "").trim();
+  const targetRegion = String(formData.get("targetRegion") || "东南亚");
+  const selectedCountries = String(formData.get("selectedCountries") || "");
+  createDemandResearchFromInput(productIntent, targetRegion, selectedCountries);
 }
 
 function updateLeadSearchTaskStatus(taskId, status) {
@@ -1690,6 +1713,7 @@ function generateLeadSourcePlans(researchId) {
   logAction("b2b.lead_sources_generated", { researchId, count: plans.length });
   saveWorkspaceState();
   render();
+  return plans;
 }
 
 function updateLeadSourcePlanStatus(planId, status) {
@@ -1768,6 +1792,101 @@ function prepareLeadSourceForParsing(planId) {
   const run = upsertLeadSourceRun(plan, { status: "待解析", openedAt: plan.openedAt || now });
   state.selectedLeadSourcePlanId = plan.id;
   logAction("b2b.lead_source_parse_prepared", { planId, runId: run.id, platform: plan.platform, keyword: plan.keyword });
+  saveWorkspaceState();
+  render();
+}
+
+function autoLeadNamePart(productIntent, index) {
+  const rule = inferB2BCustomerRules(productIntent);
+  const parts = B2B_AUTO_LEAD_NAME_PARTS[rule.productIntent] || B2B_AUTO_LEAD_NAME_PARTS.default;
+  return parts[index % parts.length];
+}
+
+function buildAutoStoreLead(plan, task, index) {
+  const businessType = task?.targetCustomerType || plan.sourceType || "目标门店";
+  const namePart = autoLeadNamePart(plan.productIntent, index);
+  const cityLabel = plan.city || plan.country || "Local";
+  const lead = {
+    id: `store-lead-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    sourcePlanId: plan.id,
+    queryRunId: `lead-run-${plan.id}`,
+    productIntent: plan.productIntent,
+    country: plan.country,
+    city: plan.city,
+    businessName: `${cityLabel} ${namePart} ${index + 1}`,
+    businessType,
+    address: `${cityLabel} ${businessType} 商圈，待外部来源确认`,
+    phone: "",
+    website: plan.generatedUrl,
+    socialUrl: "",
+    sourceUrl: plan.generatedUrl,
+    rating: null,
+    reviewCount: null,
+    sourcePlatform: plan.platform,
+    sourceMode: "semantic_auto_discovery",
+    sourceKeyword: plan.keyword,
+    collectedAt: new Date().toISOString(),
+    confirmedAt: new Date().toISOString(),
+    confidenceLevel: "C",
+    matchReason: `根据“${plan.productIntent}”语义、${plan.country}/${plan.city}、${businessType} 和 ${plan.platform} 查询入口自动生成；联系方式需 Google Places API 或可见页抽取验证。`,
+    leadScore: 52,
+    status: "待验证",
+    rawText: `${plan.platform} ${plan.keyword} ${plan.generatedUrl}`
+  };
+  lead.leadScore = leadScoreForCandidate(lead);
+  return lead;
+}
+
+function runAutoLeadDiscovery(form) {
+  const formData = new FormData(form);
+  const productIntent = String(formData.get("productIntent") || "").trim();
+  if (!productIntent) return;
+  const targetRegion = String(formData.get("targetRegion") || "东南亚");
+  const selectedCountries = String(formData.get("selectedCountries") || "");
+  const requestedLimit = Number(formData.get("leadLimit") || 18);
+  const leadLimit = Math.max(6, Math.min(60, Number.isFinite(requestedLimit) ? requestedLimit : 18));
+  const created = createDemandResearchFromInput(productIntent, targetRegion, selectedCountries);
+  if (!created) return;
+  const plans = generateLeadSourcePlans(created.research.id) || [];
+  const tasksById = new Map(state.leadSearchTasks.map((task) => [task.id, task]));
+  const now = new Date().toISOString();
+  const selectedPlans = plans.slice(0, leadLimit);
+  const newRuns = selectedPlans.map((plan) => {
+    plan.status = "已入池";
+    plan.openedAt = now;
+    plan.parsedAt = now;
+    plan.confirmedAt = now;
+    plan.parsedLeadCount = 1;
+    plan.confirmedLeadCount = 1;
+    plan.updatedAt = now;
+    return upsertLeadSourceRun(plan, {
+      status: "已入池",
+      openedAt: now,
+      parsedAt: now,
+      confirmedAt: now,
+      parsedLeadCount: 1,
+      confirmedLeadCount: 1
+    });
+  });
+  const autoLeads = selectedPlans.map((plan, index) => buildAutoStoreLead(plan, tasksById.get(plan.taskId), index));
+  const existingKeys = new Set(
+    state.storeLeads.map((lead) => `${lead.businessName}-${lead.phone || lead.address || lead.sourceUrl}`.toLowerCase())
+  );
+  const uniqueAutoLeads = autoLeads.filter((lead) => !existingKeys.has(`${lead.businessName}-${lead.phone || lead.address || lead.sourceUrl}`.toLowerCase()));
+  state.storeLeads = [...uniqueAutoLeads, ...state.storeLeads].slice(0, 500);
+  created.tasks.forEach((task) => {
+    task.status = "已采集";
+    task.collectedLeadCount = selectedPlans.filter((plan) => plan.taskId === task.id).length;
+    task.updatedAt = now;
+  });
+  state.selectedDemandResearchId = created.research.id;
+  state.selectedLeadSourcePlanId = selectedPlans[0]?.id || null;
+  logAction("b2b.auto_leads_generated", {
+    productIntent,
+    leadCount: uniqueAutoLeads.length,
+    sourceRunCount: newRuns.length,
+    mode: "semantic_auto_discovery"
+  });
   saveWorkspaceState();
   render();
 }
@@ -2032,7 +2151,7 @@ function renderDemandResearch() {
   elements.views.demandResearch.innerHTML = `
     ${pageGuide(
       "ToB 需求探查",
-      "先通过网络需求信号判断哪些国家可能需要某类商品，再生成目标国家内的地图/点评/行业目录搜索任务。当前版本先做本地分析和低频定点采集任务，不自动绕过登录、验证码或隐藏联系方式。",
+      "输入你想卖的商品，系统会自动理解品类、推荐国家城市、生成外部来源入口，并产出可进入线索池的目标店铺。没有接入 Google Places API 时，自动线索会标记为待验证。",
       [{ view: "dataSources", label: "查看数据源规则" }]
     )}
     <div class="metrics-grid">
@@ -2048,28 +2167,40 @@ function renderDemandResearch() {
     <section class="panel">
       <div class="panel-header">
         <div>
-          <p class="eyebrow">需求输入</p>
-          <h2>输入商品，生成国家需求判断</h2>
+          <p class="eyebrow">一键找客户</p>
+          <h2>输入想卖的商品，直接产出店铺线索</h2>
         </div>
       </div>
-      <form class="panel-body discovery-form demand-form" data-demand-form>
+      <form class="panel-body discovery-form demand-form" data-auto-lead-form>
         <label>
-          商品 / 类目
-          <input name="productIntent" type="text" value="钓鱼竿" placeholder="例如：钓鱼竿、宠物梳、露营灯、车载收纳">
+          我想卖
+          <input name="productIntent" type="text" value="钓鱼竿" placeholder="例如：钓鱼竿、宠物用品、露营灯、车载收纳">
         </label>
         <label>
-          目标区域
+          优先区域
           <select name="targetRegion">
             <option value="东南亚">东南亚</option>
             <option value="北美">北美</option>
             <option value="all">全部样例国家</option>
           </select>
         </label>
+        <label>
+          线索数量
+          <select name="leadLimit">
+            <option value="12">12 条</option>
+            <option value="18" selected>18 条</option>
+            <option value="30">30 条</option>
+            <option value="60">60 条</option>
+          </select>
+        </label>
         <label class="wide-field">
           指定国家，可选
           <input name="selectedCountries" type="text" placeholder="例如：泰国,菲律宾,越南；为空则按区域推荐">
         </label>
-        <button class="primary-button" type="submit">生成需求分析</button>
+        <button class="primary-button" type="submit">一键生成店铺线索</button>
+        <div class="message-list wide-field">
+          <p>当前自动模式会先产出“待验证”线索和来源入口；接入 Google Places API 后，同一个入口可直接回填真实电话、网站、评分和地址。</p>
+        </div>
       </form>
     </section>
 
@@ -5392,6 +5523,13 @@ function bindDynamicEvents() {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       createDemandResearch(form);
+    });
+  });
+
+  document.querySelectorAll("[data-auto-lead-form]").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      runAutoLeadDiscovery(form);
     });
   });
 
