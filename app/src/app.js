@@ -328,9 +328,11 @@ const state = {
   demandResearches: [],
   leadSearchTasks: [],
   leadSourcePlans: [],
+  leadSourceRuns: [],
   storeLeads: [],
   storeLeadDraft: null,
   selectedDemandResearchId: null,
+  selectedLeadSourcePlanId: null,
   yiwugoCandidates: [],
   competitorSnapshots: [],
   competitorDraft: null,
@@ -565,6 +567,15 @@ mvpReadinessItems.splice(7, 0, {
     "需求探查页会自动生成地图、点评、行业目录和网页搜索入口，并记录解析方式、可读字段、合规边界和状态；真实页面抽取仍需浏览器辅助适配器。"
 });
 
+mvpReadinessItems.splice(8, 0, {
+  area: "B2B 外部查询链路",
+  surface: "需求探查",
+  status: "已完成",
+  priority: "P0",
+  note:
+    "信息源可以打开来源并记录查询批次，带入解析表单后自动填充来源 URL、平台、国家城市和关键词；线索预览和确认会回写解析数量与入池数量。"
+});
+
 function statusRank(status) {
   const rank = {
     待发货: 0,
@@ -664,9 +675,11 @@ function buildWorkspaceSnapshot() {
     demandResearches: state.demandResearches,
     leadSearchTasks: state.leadSearchTasks,
     leadSourcePlans: state.leadSourcePlans,
+    leadSourceRuns: state.leadSourceRuns,
     storeLeads: state.storeLeads,
     storeLeadDraft: state.storeLeadDraft,
     selectedDemandResearchId: state.selectedDemandResearchId,
+    selectedLeadSourcePlanId: state.selectedLeadSourcePlanId,
     yiwugoCandidates: state.yiwugoCandidates,
     competitorSnapshots: state.competitorSnapshots,
     supplierDiscoveryConfigs: state.supplierDiscoveryConfigs,
@@ -695,9 +708,11 @@ function applyWorkspaceSnapshot(saved) {
   state.demandResearches = Array.isArray(saved.demandResearches) ? saved.demandResearches : [];
   state.leadSearchTasks = Array.isArray(saved.leadSearchTasks) ? saved.leadSearchTasks : [];
   state.leadSourcePlans = Array.isArray(saved.leadSourcePlans) ? saved.leadSourcePlans : [];
+  state.leadSourceRuns = Array.isArray(saved.leadSourceRuns) ? saved.leadSourceRuns : [];
   state.storeLeads = Array.isArray(saved.storeLeads) ? saved.storeLeads : [];
   state.storeLeadDraft = saved.storeLeadDraft || null;
   state.selectedDemandResearchId = saved.selectedDemandResearchId || null;
+  state.selectedLeadSourcePlanId = saved.selectedLeadSourcePlanId || null;
   state.yiwugoCandidates = Array.isArray(saved.yiwugoCandidates) ? saved.yiwugoCandidates : [];
   state.competitorSnapshots = Array.isArray(saved.competitorSnapshots) ? saved.competitorSnapshots : [];
   state.competitorDraft = null;
@@ -1129,6 +1144,8 @@ function auditActionLabel(action) {
     "b2b.lead_task_status_updated": "更新线索采集任务",
     "b2b.lead_sources_generated": "生成线索信息源",
     "b2b.lead_source_status_updated": "更新线索信息源状态",
+    "b2b.lead_source_opened": "记录外部查询",
+    "b2b.lead_source_parse_prepared": "带入外部查询解析",
     "b2b.store_leads_previewed": "预览店铺线索",
     "b2b.store_leads_confirmed": "确认店铺线索",
     "b2b.store_lead_status_updated": "更新店铺线索状态",
@@ -1689,6 +1706,72 @@ function updateLeadSourcePlanStatus(planId, status) {
   render();
 }
 
+function latestLeadSourceRun(planId) {
+  return state.leadSourceRuns.find((run) => run.planId === planId) || null;
+}
+
+function upsertLeadSourceRun(plan, updates = {}) {
+  const existing = latestLeadSourceRun(plan.id);
+  const now = new Date().toISOString();
+  if (existing) {
+    Object.assign(existing, updates, { updatedAt: now });
+    return existing;
+  }
+  const run = {
+    id: `lead-run-${plan.id}`,
+    planId: plan.id,
+    taskId: plan.taskId,
+    researchId: plan.researchId,
+    productIntent: plan.productIntent,
+    country: plan.country,
+    city: plan.city,
+    platform: plan.platform,
+    sourceType: plan.sourceType,
+    keyword: plan.keyword,
+    sourceUrl: plan.generatedUrl,
+    parseMode: plan.parseMode,
+    expectedFields: plan.expectedFields,
+    status: "待打开",
+    openedAt: "",
+    parsedAt: "",
+    confirmedAt: "",
+    parsedLeadCount: 0,
+    confirmedLeadCount: 0,
+    createdAt: now,
+    updatedAt: now,
+    ...updates
+  };
+  state.leadSourceRuns = [run, ...state.leadSourceRuns].slice(0, 500);
+  return run;
+}
+
+function openLeadSourcePlan(planId) {
+  const plan = state.leadSourcePlans.find((item) => item.id === planId);
+  if (!plan) return;
+  const now = new Date().toISOString();
+  plan.status = "已记录";
+  plan.openedAt = now;
+  plan.updatedAt = now;
+  const run = upsertLeadSourceRun(plan, { status: "已记录", openedAt: now });
+  state.selectedLeadSourcePlanId = plan.id;
+  logAction("b2b.lead_source_opened", { planId, runId: run.id, platform: plan.platform, keyword: plan.keyword });
+  saveWorkspaceState();
+  render();
+}
+
+function prepareLeadSourceForParsing(planId) {
+  const plan = state.leadSourcePlans.find((item) => item.id === planId);
+  if (!plan) return;
+  const now = new Date().toISOString();
+  plan.status = "待解析";
+  plan.updatedAt = now;
+  const run = upsertLeadSourceRun(plan, { status: "待解析", openedAt: plan.openedAt || now });
+  state.selectedLeadSourcePlanId = plan.id;
+  logAction("b2b.lead_source_parse_prepared", { planId, runId: run.id, platform: plan.platform, keyword: plan.keyword });
+  saveWorkspaceState();
+  render();
+}
+
 function normalizeLeadPhone(text) {
   const phone = String(text || "").match(/(?:\+?\d[\d\s().-]{6,}\d)|(?:0\d{2,4}[-\s]?\d{6,8})|(?:1[3-9]\d{9})/);
   return phone ? phone[0].replace(/\s{2,}/g, " ").trim() : "";
@@ -1758,6 +1841,8 @@ function parseStoreLeadCandidates(rawText, context) {
       const businessName = firstText.replace(/^店名[:：]\s*/, "").slice(0, 100);
       const candidate = {
         id: `lead-candidate-${Date.now()}-${index}`,
+        sourcePlanId: context.sourcePlanId || "",
+        queryRunId: context.queryRunId || "",
         productIntent: context.productIntent,
         country: context.country,
         city: context.city,
@@ -1800,6 +1885,8 @@ function previewStoreLeadCollection(form) {
   const productIntent = String(formData.get("productIntent") || task?.productIntent || "").trim();
   const context = {
     taskId,
+    sourcePlanId: String(formData.get("sourcePlanId") || "").trim(),
+    queryRunId: String(formData.get("queryRunId") || "").trim(),
     productIntent,
     country: String(formData.get("country") || task?.country || "").trim(),
     city: String(formData.get("city") || task?.city || "").trim(),
@@ -1818,6 +1905,20 @@ function previewStoreLeadCollection(form) {
     createdAt: new Date().toISOString()
   };
   logAction("b2b.store_leads_previewed", { productIntent, count: candidates.length, keyword: context.keyword });
+  if (context.sourcePlanId) {
+    const plan = state.leadSourcePlans.find((item) => item.id === context.sourcePlanId);
+    if (plan) {
+      plan.status = "已解析";
+      plan.parsedLeadCount = candidates.length;
+      plan.parsedAt = new Date().toISOString();
+      plan.updatedAt = plan.parsedAt;
+      upsertLeadSourceRun(plan, {
+        status: "已解析",
+        parsedAt: plan.parsedAt,
+        parsedLeadCount: candidates.length
+      });
+    }
+  }
   saveWorkspaceState();
   render();
 }
@@ -1844,6 +1945,19 @@ function confirmStoreLeadCollection() {
       task.status = "已采集";
       task.collectedLeadCount = (task.collectedLeadCount || 0) + newLeads.length;
       task.updatedAt = confirmedAt;
+    }
+  }
+  if (draft.sourcePlanId) {
+    const plan = state.leadSourcePlans.find((item) => item.id === draft.sourcePlanId);
+    if (plan) {
+      plan.status = "已入池";
+      plan.confirmedLeadCount = (plan.confirmedLeadCount || 0) + newLeads.length;
+      plan.updatedAt = confirmedAt;
+      upsertLeadSourceRun(plan, {
+        status: "已入池",
+        confirmedAt,
+        confirmedLeadCount: ((latestLeadSourceRun(plan.id)?.confirmedLeadCount || 0) + newLeads.length)
+      });
     }
   }
   logAction("b2b.store_leads_confirmed", { count: newLeads.length, keyword: draft.keyword });
@@ -1904,8 +2018,12 @@ function renderDemandResearch() {
   if (selected && state.selectedDemandResearchId !== selected.id) state.selectedDemandResearchId = selected.id;
   const tasks = selected ? state.leadSearchTasks.filter((task) => task.researchId === selected.id) : [];
   const sourcePlans = selected ? state.leadSourcePlans.filter((plan) => plan.researchId === selected.id) : [];
+  const sourceRuns = selected ? state.leadSourceRuns.filter((run) => run.researchId === selected.id) : [];
+  const selectedSourcePlan =
+    sourcePlans.find((plan) => plan.id === state.selectedLeadSourcePlanId) || sourcePlans.find((plan) => plan.status === "待解析") || null;
   const readyTasks = tasks.filter((task) => task.status === "待采集").length;
-  const selectedTask = tasks.find((task) => task.status === "待采集") || tasks[0] || {};
+  const selectedTask = selectedSourcePlan ? tasks.find((task) => task.id === selectedSourcePlan.taskId) || tasks[0] || {} : tasks.find((task) => task.status === "待采集") || tasks[0] || {};
+  const selectedRun = selectedSourcePlan ? latestLeadSourceRun(selectedSourcePlan.id) : null;
   const relatedLeads = selected ? state.storeLeads.filter((lead) => lead.productIntent === selected.productIntent) : state.storeLeads;
   const draft = state.storeLeadDraft;
   const targetCountries = selected?.countries.length || 0;
@@ -1923,6 +2041,7 @@ function renderDemandResearch() {
       ${metricCard("目标城市", targetCities, "会生成定点搜索任务的城市")}
       ${metricCard("待采集任务", readyTasks, "下一步进入地图/点评可见页采集")}
       ${metricCard("信息源", sourcePlans.length, "自动生成的地图/目录/搜索入口")}
+      ${metricCard("查询记录", sourceRuns.length, "已记录或准备解析的外部来源")}
       ${metricCard("店铺线索", state.storeLeads.length, "已确认进入本地线索池")}
     </div>
 
@@ -2076,9 +2195,53 @@ function renderDemandResearch() {
                                 <td><span class="tag ${statusClass(plan.status)}">${h(plan.status)}</span></td>
                                 <td>
                                   <select class="inline-select" data-lead-source-status="${h(plan.id)}">
-                                    ${["待打开", "待解析", "已解析", "已入池", "失败", "跳过"].map((status) => `<option value="${status}" ${plan.status === status ? "selected" : ""}>${status}</option>`).join("")}
+                                    ${["待打开", "已记录", "待解析", "已解析", "已入池", "失败", "跳过"].map((status) => `<option value="${status}" ${plan.status === status ? "selected" : ""}>${status}</option>`).join("")}
                                   </select>
+                                  <button class="small-button" type="button" data-open-lead-source="${h(plan.id)}">记录查询</button>
+                                  <button class="small-button" type="button" data-prepare-lead-source="${h(plan.id)}">带入解析</button>
                                 </td>
+                              </tr>
+                            `
+                          )
+                          .join("")
+                  }
+                </tbody>
+              </table>
+            </div>
+          </section>
+          <section class="table-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">查询记录</p>
+                <h2>外部网站查询和解析链路</h2>
+              </div>
+              <span class="muted">记录每次打开来源、准备解析、预览解析和确认入池。</span>
+            </div>
+            <div class="table-scroll">
+              <table class="compact-table">
+                <thead>
+                  <tr>
+                    <th>来源</th>
+                    <th>查询词</th>
+                    <th>时间</th>
+                    <th>结果</th>
+                    <th>状态</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${
+                    sourceRuns.length === 0
+                      ? `<tr><td colspan="5" class="muted">还没有外部查询记录。打开来源后点击“记录查询”，这里会形成查询批次。</td></tr>`
+                      : sourceRuns
+                          .slice(0, 60)
+                          .map(
+                            (run) => `
+                              <tr>
+                                <td><strong>${h(run.platform)}</strong><br><span class="muted">${h(run.country)} / ${h(run.city)}</span></td>
+                                <td class="wide-note">${h(run.keyword)}<br><a href="${h(run.sourceUrl)}" target="_blank" rel="noopener">来源链接</a></td>
+                                <td>记录：${h(run.openedAt ? formatDateTime(run.openedAt) : "待记录")}<br><span class="muted">解析：${h(run.parsedAt ? formatDateTime(run.parsedAt) : "待解析")}</span></td>
+                                <td>${h(run.parsedLeadCount || 0)} 预览<br><span class="muted">${h(run.confirmedLeadCount || 0)} 入池</span></td>
+                                <td><span class="tag ${statusClass(run.status)}">${h(run.status)}</span></td>
                               </tr>
                             `
                           )
@@ -2097,6 +2260,8 @@ function renderDemandResearch() {
               <span class="muted">先预览，确认后才进入线索池。</span>
             </div>
             <form class="panel-body competitor-form lead-collection-form" data-store-lead-form>
+              <input type="hidden" name="sourcePlanId" value="${h(selectedSourcePlan?.id || "")}">
+              <input type="hidden" name="queryRunId" value="${h(selectedRun?.id || "")}">
               <label>
                 关联任务
                 <select name="taskId">
@@ -2114,27 +2279,27 @@ function renderDemandResearch() {
               </label>
               <label>
                 来源平台
-                <input name="sourcePlatform" type="text" value="${h(selectedTask.platform || "Google Maps")}" placeholder="Google Maps / 高德地图 / 大众点评">
+                <input name="sourcePlatform" type="text" value="${h(selectedSourcePlan?.platform || selectedTask.platform || "Google Maps")}" placeholder="Google Maps / 高德地图 / 大众点评">
               </label>
               <label>
                 国家
-                <input name="country" type="text" value="${h(selectedTask.country || selected.countries[0]?.country || "")}">
+                <input name="country" type="text" value="${h(selectedSourcePlan?.country || selectedTask.country || selected.countries[0]?.country || "")}">
               </label>
               <label>
                 城市
-                <input name="city" type="text" value="${h(selectedTask.city || selected.countries[0]?.cities?.[0] || "")}">
+                <input name="city" type="text" value="${h(selectedSourcePlan?.city || selectedTask.city || selected.countries[0]?.cities?.[0] || "")}">
               </label>
               <label>
                 搜索关键词
-                <input name="keyword" type="text" value="${h(selectedTask.keyword || "")}">
+                <input name="keyword" type="text" value="${h(selectedSourcePlan?.keyword || selectedTask.keyword || "")}">
               </label>
               <label>
                 目标客户
                 <input name="targetCustomerType" type="text" value="${h(selectedTask.targetCustomerType || selected.countries[0]?.customerTypes?.[0] || "")}">
               </label>
               <label class="wide-field">
-                来源 URL，可选
-                <input name="sourceUrl" type="url" placeholder="地图、点评、行业目录或搜索结果页面 URL">
+                来源 URL
+                <input name="sourceUrl" type="url" value="${h(selectedSourcePlan?.generatedUrl || "")}" placeholder="地图、点评、行业目录或搜索结果页面 URL">
               </label>
               <label class="wide-field">
                 粘贴可见内容
@@ -2198,7 +2363,7 @@ function renderDemandResearch() {
                 <p class="eyebrow">线索池</p>
                 <h2>已确认店铺线索</h2>
               </div>
-              <span class="muted">下一步 T-051 会把这里接成 CRM 跟进流。</span>
+              <span class="muted">下一步 T-053 会把这里接成 CRM 跟进流。</span>
             </div>
             <div class="table-scroll">
               <table class="compact-table">
@@ -4930,9 +5095,11 @@ function resetLocalWorkspace() {
   state.demandResearches = [];
   state.leadSearchTasks = [];
   state.leadSourcePlans = [];
+  state.leadSourceRuns = [];
   state.storeLeads = [];
   state.storeLeadDraft = null;
   state.selectedDemandResearchId = null;
+  state.selectedLeadSourcePlanId = null;
   state.yiwugoCandidates = [];
   state.competitorSnapshots = [];
   state.competitorDraft = null;
@@ -5243,6 +5410,18 @@ function bindDynamicEvents() {
   document.querySelectorAll("[data-lead-source-status]").forEach((select) => {
     select.addEventListener("change", () => {
       updateLeadSourcePlanStatus(select.dataset.leadSourceStatus, select.value);
+    });
+  });
+
+  document.querySelectorAll("[data-open-lead-source]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openLeadSourcePlan(button.dataset.openLeadSource);
+    });
+  });
+
+  document.querySelectorAll("[data-prepare-lead-source]").forEach((button) => {
+    button.addEventListener("click", () => {
+      prepareLeadSourceForParsing(button.dataset.prepareLeadSource);
     });
   });
 
