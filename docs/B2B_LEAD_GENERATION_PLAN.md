@@ -14,6 +14,7 @@ Example:
 4. The system generates source plans for maps, review platforms, directories, and search engines.
 5. In the MVP, operators can also use one-click generation: enter a product intent and receive target store leads with source URLs and validation status.
 6. Production enrichment should use Google Places API, official POI APIs, or explicit browser-assisted extraction to fill real phone, website, rating, and address evidence.
+7. When API access is unavailable, operators can use a no-API browser-visible capture bookmarklet to bring the currently visible search/map/directory page text back into the local parser.
 
 ## Core Workflow
 
@@ -25,10 +26,11 @@ flowchart LR
   D --> E["自动生成信息源和解析规则"]
   E --> F["一键生成待验证线索"]
   E --> G["打开外部来源并记录查询"]
-  F --> H["线索池去重和评分"]
-  G --> H
-  H --> I["销售跟进"]
-  I --> J["报价/样品/成交复盘"]
+  G --> H["无 API 可见页采集"]
+  F --> I["线索池去重和评分"]
+  H --> I
+  I --> J["销售跟进"]
+  J --> K["报价/样品/成交复盘"]
 ```
 
 ## Demand Exploration
@@ -54,6 +56,18 @@ The local MVP now treats the product input as the main operating entry point:
 5. Create `待验证` store leads with source URLs and confidence `C`.
 
 These one-click leads are useful for workflow testing and sales list structuring, but they are not a substitute for real POI enrichment. Real contact fields should come from Google Places API, official local POI APIs, approved data providers, or explicit browser-assisted visible-page extraction.
+
+## No-API Browser Capture
+
+When official map or POI APIs are not available, the MVP supports a browser-visible capture handoff:
+
+1. Select or prepare a generated source plan.
+2. Open its Google/Bing/map/directory search URL.
+3. Click the local capture bookmarklet on that external page.
+4. The bookmarklet reads only `document.body.innerText` from the current visible page, trims it, and returns to the local app through a URL hash payload.
+5. The local parser turns that visible text into a preview, then the operator confirms valid leads into the lead pool.
+
+This mode does not run a background crawler, does not store cookies, and does not bypass login, CAPTCHA, or hidden data. It is less stable than an API because search/map page layouts and visible text quality vary by platform.
 
 ## Lead Sources
 
@@ -164,6 +178,7 @@ These one-click leads are useful for workflow testing and sales list structuring
 | 信息源自动发现 | Generate Google Maps, Baidu/Amap, Dianping, web search, and industry-directory source URLs with parser rules and safety boundaries. |
 | 外部查询记录 | Open generated source URLs, record query runs, prefill parser context, and write parsed/confirmed lead counts back to the source run. |
 | 一键线索生成 | Convert product intent into demand research, source plans, query runs, and `待验证` store leads with no extra operator step. |
+| 无 API 可见页采集 | Capture current browser-visible search/map/directory page text through a bookmarklet and parse it into the preview-confirm lead flow. |
 | 店铺线索池 | Parse/store business leads, dedupe, score, and manage source evidence after human confirmation. |
 | 销售跟进 | Future: status, owner, contact log, template messages, quote/sample follow-up. |
 | 数据源治理 | Reuse the existing adapter envelope for maps, visible pages, directories, manual uploads, and future APIs. |
@@ -177,7 +192,8 @@ These one-click leads are useful for workflow testing and sales list structuring
 5. Add automatic source discovery plans with generated URLs and parser routing. Done in local MVP.
 6. Add external source query runs and parser handoff. Done in local MVP.
 7. Add one-click semantic lead generation from product intent. Done in local MVP.
-8. Add Google Places API or approved POI API enrichment for real phone/website/rating/address fields.
-9. Add browser-assisted visible source extraction from generated pages.
-10. Add CRM follow-up statuses and contact notes.
-11. Add message templates by language and product category.
+8. Add no-API browser-visible page capture bookmarklet. Done in local MVP.
+9. Add Google Places API or approved POI API enrichment for real phone/website/rating/address fields.
+10. Add browser-assisted structured store-card extraction where permitted by browser context.
+11. Add CRM follow-up statuses and contact notes.
+12. Add message templates by language and product category.

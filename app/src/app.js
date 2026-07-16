@@ -593,6 +593,15 @@ mvpReadinessItems.splice(9, 0, {
     "输入想卖的商品后，可一键生成需求判断、来源计划、查询记录和待验证店铺线索；真实电话、评分和地址 enrichment 仍需 Google Places API 或浏览器可见页抽取。"
 });
 
+mvpReadinessItems.splice(10, 0, {
+  area: "B2B 无 API 网页采集",
+  surface: "需求探查",
+  status: "已完成",
+  priority: "P0",
+  note:
+    "在搜索/地图/目录外部页面点击采集书签，可把当前可见文本带回本地解析预览；不后台爬取、不保存 cookie、不绕过登录或验证码。"
+});
+
 function statusRank(status) {
   const rank = {
     待发货: 0,
@@ -1164,6 +1173,8 @@ function auditActionLabel(action) {
     "b2b.lead_source_opened": "记录外部查询",
     "b2b.lead_source_parse_prepared": "带入外部查询解析",
     "b2b.auto_leads_generated": "一键生成店铺线索",
+    "b2b.capture_bookmarklet_copied": "复制网页采集书签",
+    "b2b.browser_capture_imported": "导入网页可见内容",
     "b2b.store_leads_previewed": "预览店铺线索",
     "b2b.store_leads_confirmed": "确认店铺线索",
     "b2b.store_lead_status_updated": "更新店铺线索状态",
@@ -1796,6 +1807,101 @@ function prepareLeadSourceForParsing(planId) {
   render();
 }
 
+function captureBookmarkletCode() {
+  const appUrl = window.location.href.split("#")[0];
+  const returnPrefix = JSON.stringify(`${appUrl}#lead-capture=`);
+  return `javascript:(()=>{const payload={url:location.href,title:document.title,text:(document.body&&document.body.innerText||'').slice(0,12000),capturedAt:new Date().toISOString()};location.href=${returnPrefix}+encodeURIComponent(JSON.stringify(payload));})()`;
+}
+
+function copyCaptureBookmarklet() {
+  const code = captureBookmarkletCode();
+  navigator.clipboard
+    .writeText(code)
+    .then(() => {
+      logAction("b2b.capture_bookmarklet_copied", { length: code.length });
+      saveWorkspaceState();
+      window.alert("已复制网页采集书签脚本。把它保存成浏览器书签，在搜索结果页点击即可把可见内容带回本系统。");
+    })
+    .catch(() => {
+      window.prompt("复制下面的网页采集书签脚本：", code);
+    });
+}
+
+function contextFromSourcePlan(plan) {
+  const task = state.leadSearchTasks.find((item) => item.id === plan?.taskId);
+  return {
+    taskId: plan?.taskId || task?.id || "",
+    sourcePlanId: plan?.id || "",
+    queryRunId: plan ? latestLeadSourceRun(plan.id)?.id || `lead-run-${plan.id}` : "",
+    productIntent: plan?.productIntent || task?.productIntent || "未命名商品",
+    country: plan?.country || task?.country || "",
+    city: plan?.city || task?.city || "",
+    sourcePlatform: plan?.platform || task?.platform || "网页搜索",
+    keyword: plan?.keyword || task?.keyword || "",
+    targetCustomerType: task?.targetCustomerType || plan?.sourceType || "目标门店",
+    sourceUrl: plan?.generatedUrl || ""
+  };
+}
+
+function importBrowserVisibleCapture(payload) {
+  const text = String(payload?.text || "").trim();
+  if (!text) return false;
+  const currentPlan =
+    state.leadSourcePlans.find((plan) => plan.id === state.selectedLeadSourcePlanId) ||
+    state.leadSourcePlans.find((plan) => payload.url && payload.url.includes(plan.generatedUrl)) ||
+    state.leadSourcePlans[0] ||
+    null;
+  const context = contextFromSourcePlan(currentPlan);
+  context.sourceUrl = String(payload.url || context.sourceUrl || "").trim();
+  context.sourcePlatform = currentPlan?.platform || "网页可见页";
+  const candidates = parseStoreLeadCandidates(text, context);
+  const capturedAt = payload.capturedAt || new Date().toISOString();
+  state.storeLeadDraft = {
+    id: `store-lead-draft-${Date.now()}`,
+    ...context,
+    rawText: text.slice(0, 12000),
+    captureTitle: String(payload.title || "").slice(0, 180),
+    candidates,
+    createdAt: capturedAt
+  };
+  if (currentPlan) {
+    currentPlan.status = candidates.length > 0 ? "已解析" : "失败";
+    currentPlan.parsedLeadCount = candidates.length;
+    currentPlan.parsedAt = capturedAt;
+    currentPlan.updatedAt = capturedAt;
+    upsertLeadSourceRun(currentPlan, {
+      status: currentPlan.status,
+      sourceUrl: context.sourceUrl,
+      parsedAt: capturedAt,
+      parsedLeadCount: candidates.length
+    });
+  }
+  state.selectedLeadSourcePlanId = currentPlan?.id || state.selectedLeadSourcePlanId;
+  state.view = "demandResearch";
+  logAction("b2b.browser_capture_imported", {
+    sourceUrl: context.sourceUrl,
+    title: payload.title,
+    parsedCount: candidates.length
+  });
+  saveWorkspaceState();
+  return true;
+}
+
+function handleIncomingLeadCapture() {
+  const prefix = "#lead-capture=";
+  if (!window.location.hash.startsWith(prefix)) return false;
+  try {
+    const payload = JSON.parse(decodeURIComponent(window.location.hash.slice(prefix.length)));
+    const imported = importBrowserVisibleCapture(payload);
+    window.history.replaceState(null, "", window.location.pathname);
+    return imported;
+  } catch (error) {
+    window.history.replaceState(null, "", window.location.pathname);
+    window.alert("网页采集内容解析失败，请回到搜索页重新采集。");
+    return false;
+  }
+}
+
 function autoLeadNamePart(productIntent, index) {
   const rule = inferB2BCustomerRules(productIntent);
   const parts = B2B_AUTO_LEAD_NAME_PARTS[rule.productIntent] || B2B_AUTO_LEAD_NAME_PARTS.default;
@@ -2338,6 +2444,30 @@ function renderDemandResearch() {
                   }
                 </tbody>
               </table>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">无 API 网页采集</p>
+                <h2>从搜索页可见内容提取线索</h2>
+              </div>
+              <button class="small-button" type="button" data-copy-capture-bookmarklet>复制采集书签</button>
+            </div>
+            <div class="panel-body detail-stack">
+              <div class="message-list">
+                <p>不用地图 API 时，先在上面的信息源里点“带入解析”，再打开来源搜索页。在搜索结果页点击采集书签，当前页面可见文本会回到本系统并自动进入线索预览。</p>
+              </div>
+              ${detailRows([
+                ["采集方式", "浏览器当前可见页文本，不后台爬取，不保存 cookie"],
+                ["可提取字段", "店名、地址、公开电话、网站、评分、评论数、来源 URL"],
+                ["跳过规则", "无店名、无地址/来源、类目明显不相关、重复线索会被过滤或进入待确认"],
+                ["当前限制", "Google Maps 等复杂页面可能只返回部分可见文本；真实稳定批量采集仍建议接官方 API 或合规 POI 数据源"]
+              ])}
+              <label class="wide-field">
+                采集书签脚本
+                <textarea class="code-textarea" readonly rows="4">${h(captureBookmarkletCode())}</textarea>
+              </label>
             </div>
           </section>
           <section class="table-panel">
@@ -5563,6 +5693,10 @@ function bindDynamicEvents() {
     });
   });
 
+  document.querySelectorAll("[data-copy-capture-bookmarklet]").forEach((button) => {
+    button.addEventListener("click", copyCaptureBookmarklet);
+  });
+
   document.querySelectorAll("[data-store-lead-form]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -5746,4 +5880,8 @@ loadWorkspaceState();
 syncShipmentsWithOrders();
 refreshFilters();
 bindStaticEvents();
+handleIncomingLeadCapture();
+window.addEventListener("hashchange", () => {
+  if (handleIncomingLeadCapture()) render();
+});
 render();

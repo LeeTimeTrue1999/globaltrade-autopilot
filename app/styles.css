@@ -794,6 +794,19 @@ h3 {
   line-height: 1.45;
 }
 
+.code-textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #f8fafc;
+  color: var(--text);
+  padding: 10px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 .competitor-form .wide-field,
 .localization-form .wide-field {
   grid-column: 1 / -1;
