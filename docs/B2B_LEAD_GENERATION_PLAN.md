@@ -15,6 +15,7 @@ Example:
 5. In the MVP, operators can also use one-click generation: enter a product intent and receive target store leads with source URLs and validation status.
 6. Production enrichment should use Google Places API, official POI APIs, or explicit browser-assisted extraction to fill real phone, website, rating, and address evidence.
 7. When API access is unavailable, operators can use a no-API browser-visible capture bookmarklet to bring the currently visible search/map/directory page text back into the local parser.
+8. The semi-automatic MVP queue can now select a source plan, copy a plan-bound capture bookmarklet, open the external source URL, and route returned visible text to the correct lead preview.
 
 ## Core Workflow
 
@@ -26,9 +27,10 @@ flowchart LR
   D --> E["自动生成信息源和解析规则"]
   E --> F["一键生成待验证线索"]
   E --> G["打开外部来源并记录查询"]
-  G --> H["无 API 可见页采集"]
+  G --> H["半自动浏览器采集队列"]
+  H --> L["无 API 可见页采集"]
   F --> I["线索池去重和评分"]
-  H --> I
+  L --> I
   I --> J["销售跟进"]
   J --> K["报价/样品/成交复盘"]
 ```
@@ -68,6 +70,19 @@ When official map or POI APIs are not available, the MVP supports a browser-visi
 5. The local parser turns that visible text into a preview, then the operator confirms valid leads into the lead pool.
 
 This mode does not run a background crawler, does not store cookies, and does not bypass login, CAPTCHA, or hidden data. It is less stable than an API because search/map page layouts and visible text quality vary by platform.
+
+## Semi-Automatic Browser Queue
+
+The local MVP now adds a queue layer on top of no-API capture:
+
+1. The operator enters a product intent such as `鱼竿`.
+2. The system creates demand research, target countries/cities, customer types, and source plans.
+3. The operator clicks `采集下一条` or `开始采集` on a source plan.
+4. The system selects that source plan, records a capture run, copies a bookmarklet containing the plan id, and opens the external source URL.
+5. The operator clicks the bookmarklet on the external page.
+6. The local app receives the visible text, matches it back to the original source plan, parses store leads, and shows the preview-confirm step.
+
+This is the practical MVP bridge between fully manual copy/paste and stable API enrichment. It still requires a human-controlled browser action on the external page.
 
 ## Lead Sources
 
@@ -179,6 +194,7 @@ This mode does not run a background crawler, does not store cookies, and does no
 | 外部查询记录 | Open generated source URLs, record query runs, prefill parser context, and write parsed/confirmed lead counts back to the source run. |
 | 一键线索生成 | Convert product intent into demand research, source plans, query runs, and `待验证` store leads with no extra operator step. |
 | 无 API 可见页采集 | Capture current browser-visible search/map/directory page text through a bookmarklet and parse it into the preview-confirm lead flow. |
+| 半自动浏览器采集 | Start a selected source plan, copy a plan-bound capture bookmarklet, open the external page, and route returned visible text to the correct source plan. |
 | 店铺线索池 | Parse/store business leads, dedupe, score, and manage source evidence after human confirmation. |
 | 销售跟进 | Future: status, owner, contact log, template messages, quote/sample follow-up. |
 | 数据源治理 | Reuse the existing adapter envelope for maps, visible pages, directories, manual uploads, and future APIs. |
@@ -193,7 +209,8 @@ This mode does not run a background crawler, does not store cookies, and does no
 6. Add external source query runs and parser handoff. Done in local MVP.
 7. Add one-click semantic lead generation from product intent. Done in local MVP.
 8. Add no-API browser-visible page capture bookmarklet. Done in local MVP.
-9. Add Google Places API or approved POI API enrichment for real phone/website/rating/address fields.
-10. Add browser-assisted structured store-card extraction where permitted by browser context.
-11. Add CRM follow-up statuses and contact notes.
-12. Add message templates by language and product category.
+9. Add semi-automatic browser-assisted capture queue. Done in local MVP.
+10. Add Google Places API or approved POI API enrichment for real phone/website/rating/address fields.
+11. Add browser-assisted structured store-card extraction where permitted by browser context.
+12. Add CRM follow-up statuses and contact notes.
+13. Add message templates by language and product category.

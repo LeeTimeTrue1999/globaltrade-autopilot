@@ -602,6 +602,15 @@ mvpReadinessItems.splice(10, 0, {
     "在搜索/地图/目录外部页面点击采集书签，可把当前可见文本带回本地解析预览；不后台爬取、不保存 cookie、不绕过登录或验证码。"
 });
 
+mvpReadinessItems.splice(11, 0, {
+  area: "B2B 半自动浏览器采集",
+  surface: "需求探查",
+  status: "已完成",
+  priority: "P0",
+  note:
+    "信息源队列支持一键开始采集：自动选中来源、复制带任务编号的采集书签、打开外部搜索页，回流后准确归档到对应来源并进入线索预览。"
+});
+
 function statusRank(status) {
   const rank = {
     待发货: 0,
@@ -1172,6 +1181,7 @@ function auditActionLabel(action) {
     "b2b.lead_source_status_updated": "更新线索信息源状态",
     "b2b.lead_source_opened": "记录外部查询",
     "b2b.lead_source_parse_prepared": "带入外部查询解析",
+    "b2b.browser_assisted_capture_started": "启动浏览器辅助采集",
     "b2b.auto_leads_generated": "一键生成店铺线索",
     "b2b.capture_bookmarklet_copied": "复制网页采集书签",
     "b2b.browser_capture_imported": "导入网页可见内容",
@@ -1810,7 +1820,8 @@ function prepareLeadSourceForParsing(planId) {
 function captureBookmarkletCode() {
   const appUrl = window.location.href.split("#")[0];
   const returnPrefix = JSON.stringify(`${appUrl}#lead-capture=`);
-  return `javascript:(()=>{const payload={url:location.href,title:document.title,text:(document.body&&document.body.innerText||'').slice(0,12000),capturedAt:new Date().toISOString()};location.href=${returnPrefix}+encodeURIComponent(JSON.stringify(payload));})()`;
+  const planId = JSON.stringify(state.selectedLeadSourcePlanId || "");
+  return `javascript:(()=>{const payload={planId:${planId},url:location.href,title:document.title,text:(document.body&&document.body.innerText||'').slice(0,12000),capturedAt:new Date().toISOString()};location.href=${returnPrefix}+encodeURIComponent(JSON.stringify(payload));})()`;
 }
 
 function copyCaptureBookmarklet() {
@@ -1843,10 +1854,59 @@ function contextFromSourcePlan(plan) {
   };
 }
 
+function copyTextToClipboard(text) {
+  if (navigator.clipboard?.writeText) {
+    return navigator.clipboard.writeText(text);
+  }
+  return Promise.reject(new Error("clipboard unavailable"));
+}
+
+function beginBrowserAssistedCapture(planId, shouldOpenSource = true) {
+  const plan = state.leadSourcePlans.find((item) => item.id === planId);
+  if (!plan) return;
+  const now = new Date().toISOString();
+  state.selectedLeadSourcePlanId = plan.id;
+  plan.status = "等待采集";
+  plan.openedAt = now;
+  plan.updatedAt = now;
+  const run = upsertLeadSourceRun(plan, {
+    status: "等待采集",
+    openedAt: now,
+    sourceUrl: plan.generatedUrl
+  });
+  logAction("b2b.browser_assisted_capture_started", {
+    planId: plan.id,
+    runId: run.id,
+    platform: plan.platform,
+    keyword: plan.keyword
+  });
+  saveWorkspaceState();
+  render();
+  const code = captureBookmarkletCode();
+  copyTextToClipboard(code)
+    .catch(() => {
+      window.prompt("复制下面的采集书签脚本，保存为浏览器书签后在外部页面点击：", code);
+    })
+    .finally(() => {
+      if (shouldOpenSource) window.open(plan.generatedUrl, "_blank", "noopener");
+      window.alert("已准备半自动采集：采集书签已复制。外部搜索页打开后，点击该书签即可把可见店铺信息带回本系统。");
+    });
+}
+
+function beginNextBrowserAssistedCapture(researchId) {
+  const plans = state.leadSourcePlans.filter((plan) => plan.researchId === researchId);
+  const nextPlan =
+    plans.find((plan) => ["待打开", "待解析", "等待采集", "已记录"].includes(plan.status)) ||
+    plans.find((plan) => !["已入池", "跳过"].includes(plan.status)) ||
+    plans[0];
+  if (nextPlan) beginBrowserAssistedCapture(nextPlan.id);
+}
+
 function importBrowserVisibleCapture(payload) {
   const text = String(payload?.text || "").trim();
   if (!text) return false;
   const currentPlan =
+    state.leadSourcePlans.find((plan) => plan.id === payload?.planId) ||
     state.leadSourcePlans.find((plan) => plan.id === state.selectedLeadSourcePlanId) ||
     state.leadSourcePlans.find((plan) => payload.url && payload.url.includes(plan.generatedUrl)) ||
     state.leadSourcePlans[0] ||
@@ -2251,6 +2311,11 @@ function renderDemandResearch() {
   const selectedRun = selectedSourcePlan ? latestLeadSourceRun(selectedSourcePlan.id) : null;
   const relatedLeads = selected ? state.storeLeads.filter((lead) => lead.productIntent === selected.productIntent) : state.storeLeads;
   const draft = state.storeLeadDraft;
+  const nextCapturePlan =
+    sourcePlans.find((plan) => ["待打开", "已记录", "待解析", "等待采集"].includes(plan.status)) ||
+    sourcePlans.find((plan) => !["已入池", "跳过"].includes(plan.status)) ||
+    sourcePlans[0] ||
+    null;
   const targetCountries = selected?.countries.length || 0;
   const targetCities = selected ? new Set(tasks.map((task) => `${task.country}-${task.city}`)).size : 0;
 
@@ -2432,8 +2497,9 @@ function renderDemandResearch() {
                                 <td><span class="tag ${statusClass(plan.status)}">${h(plan.status)}</span></td>
                                 <td>
                                   <select class="inline-select" data-lead-source-status="${h(plan.id)}">
-                                    ${["待打开", "已记录", "待解析", "已解析", "已入池", "失败", "跳过"].map((status) => `<option value="${status}" ${plan.status === status ? "selected" : ""}>${status}</option>`).join("")}
+                                    ${["待打开", "已记录", "等待采集", "待解析", "已解析", "已入池", "失败", "跳过"].map((status) => `<option value="${status}" ${plan.status === status ? "selected" : ""}>${status}</option>`).join("")}
                                   </select>
+                                  <button class="small-button" type="button" data-start-browser-capture="${h(plan.id)}">开始采集</button>
                                   <button class="small-button" type="button" data-open-lead-source="${h(plan.id)}">记录查询</button>
                                   <button class="small-button" type="button" data-prepare-lead-source="${h(plan.id)}">带入解析</button>
                                 </td>
@@ -2444,6 +2510,27 @@ function renderDemandResearch() {
                   }
                 </tbody>
               </table>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">半自动浏览器采集</p>
+                <h2>按队列打开外部页面并回流联系方式</h2>
+              </div>
+              <div class="form-actions">
+                <button class="primary-button" type="button" data-start-next-browser-capture="${h(selected.id)}" ${nextCapturePlan ? "" : "disabled"}>采集下一条</button>
+                <button class="small-button" type="button" data-start-browser-capture="${h((selectedSourcePlan || nextCapturePlan)?.id || "")}" ${(selectedSourcePlan || nextCapturePlan) ? "" : "disabled"}>采集当前来源</button>
+              </div>
+            </div>
+            <div class="panel-body detail-stack">
+              ${detailRows([
+                ["当前来源", selectedSourcePlan ? `${selectedSourcePlan.platform} / ${selectedSourcePlan.country} / ${selectedSourcePlan.city}` : nextCapturePlan ? `${nextCapturePlan.platform} / ${nextCapturePlan.country} / ${nextCapturePlan.city}` : "暂无待采集来源"],
+                ["搜索词", (selectedSourcePlan || nextCapturePlan)?.keyword || "先生成信息源"],
+                ["执行动作", "系统复制带任务编号的采集书签，打开外部搜索页；你在外部页点击书签后，可见文本会自动回流并进入线索预览"],
+                ["适用场景", "Google/Bing 搜索结果、Google Maps 可见列表、本地目录、点评/行业目录公开页"],
+                ["安全边界", "不保存登录态，不读取隐藏字段，不绕过验证码；页面没有公开联系方式时会进入待补信息"]
+              ])}
             </div>
           </section>
           <section class="panel">
@@ -5690,6 +5777,18 @@ function bindDynamicEvents() {
   document.querySelectorAll("[data-prepare-lead-source]").forEach((button) => {
     button.addEventListener("click", () => {
       prepareLeadSourceForParsing(button.dataset.prepareLeadSource);
+    });
+  });
+
+  document.querySelectorAll("[data-start-browser-capture]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.startBrowserCapture) beginBrowserAssistedCapture(button.dataset.startBrowserCapture);
+    });
+  });
+
+  document.querySelectorAll("[data-start-next-browser-capture]").forEach((button) => {
+    button.addEventListener("click", () => {
+      beginNextBrowserAssistedCapture(button.dataset.startNextBrowserCapture);
     });
   });
 

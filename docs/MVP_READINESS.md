@@ -38,7 +38,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 
 2026-07-13 supplement: Shopee, Lazada, and TikTok Shop adaptation is now organized in `docs/MARKETPLACE_PLATFORM_ADAPTERS.md`. The plan keeps seller exports, visible-page capture, browser-assisted extraction, future API sync, and scheduled jobs behind the same data source adapter contract.
 
-2026-07-15 supplement: a ToB demand exploration page is now visible in the frontend. It recommends target countries and cities for a product intent such as `钓鱼竿`, generates low-frequency map/review/search tasks for public store contact discovery, automatically generates source URLs and parser rules for maps/reviews/directories/search, records external source query runs, can create `待验证` store leads from one product input, and now supports no-API browser-visible page capture through a local bookmarklet. Real POI enrichment and CRM follow-up remain the next gaps.
+2026-07-15 supplement: a ToB demand exploration page is now visible in the frontend. It recommends target countries and cities for a product intent such as `钓鱼竿`, generates low-frequency map/review/search tasks for public store contact discovery, automatically generates source URLs and parser rules for maps/reviews/directories/search, records external source query runs, can create `待验证` store leads from one product input, supports no-API browser-visible page capture through a local bookmarklet, and now has a semi-automatic browser capture queue that opens source pages and routes returned visible text to the correct source plan. Real POI enrichment and CRM follow-up remain the next gaps.
 
 | Area | Frontend status | MVP status | Notes |
 | --- | --- | --- | --- |
@@ -65,6 +65,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 | B2B external source query chain | 需求探查 | 已完成 | Generated source plans can be opened and recorded as query runs, brought into the parser with source context prefilled, and updated with parsed and confirmed lead counts. |
 | B2B one-click lead generation | 需求探查 | 已完成 | Product intent can directly generate demand research, source plans, query runs, and local `待验证` store leads without extra operator steps. |
 | B2B no-API browser capture | 需求探查 | 已完成 | Provides a capture bookmarklet for search/map/directory pages; visible page text returns to the local parser and enters the preview-confirm lead flow. |
+| B2B semi-automatic browser capture | 需求探查 | 已完成 | Source plans can start a browser-assisted capture session: copy a plan-bound bookmarklet, open the external source URL, and route returned visible text to the matching source plan preview. |
 | Store lead pool | 需求探查 | 已完成 | Visible map/review/directory/search text can be pasted, parsed, previewed, confirmed, scored, deduped, removed if mistaken, and kept in a local lead pool. |
 | B2B sales follow-up | 前端尚未形成独立入口 | 待补 | Need CRM statuses, owner, notes, outreach channel, templates, and opt-out/suppression handling. |
 | KPI weekly review | 经营复盘 | 待补 | Needs stronger KPI dashboard for GMV, margin, test outcome, supplier issues, and logistics exceptions. |
@@ -104,7 +105,7 @@ If a feature is only documented but not visible in the frontend, it should appea
 2. Platform-specific seller export mapping presets for Shopee, Lazada, and TikTok Shop are not implemented yet.
 3. Browser-assisted marketplace capture is documented but not implemented.
 4. One-click B2B leads are generated locally as `待验证`; real phone, website, rating, and address enrichment still needs Google Places API, approved POI APIs, or structured visible-page extraction.
-5. No-API browser capture can import visible text, but it is not as stable as an official API and may miss fields on complex map pages.
+5. Semi-automatic browser capture can import visible text and preserve source-plan context, but it is not as stable as an official API and may miss fields on complex map pages.
 6. B2B CRM follow-up workflow is not implemented yet.
 7. Cost templates need platform/country/category provenance so every fee can show its source.
 8. Competitor price collection is visible and local, but true automated logged-in browser extraction, official marketplace API access, and third-party market data providers still need compliance and account-access review.
