@@ -240,6 +240,45 @@ h3 {
   font-size: 12px;
 }
 
+.workflow-panel {
+  margin-bottom: 16px;
+}
+
+.workflow-steps {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+  padding: 0 16px 16px;
+}
+
+.workflow-step {
+  min-height: 74px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: white;
+  color: var(--text);
+  padding: 10px;
+  text-align: left;
+}
+
+.workflow-step span {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.workflow-step small {
+  display: block;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.workflow-step.is-active {
+  border-color: var(--primary);
+  background: var(--surface-strong);
+  box-shadow: inset 0 0 0 1px rgba(40, 116, 76, 0.12);
+}
+
 .content {
   width: min(1480px, 100%);
   margin: 0 auto;
@@ -1260,6 +1299,10 @@ tbody tr:hover {
     grid-template-columns: repeat(4, 1fr);
   }
 
+  .workflow-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .two-column,
   .metrics-grid,
   .filter-bar,
@@ -1312,6 +1355,10 @@ tbody tr:hover {
   .topbar-actions,
   .nav-list {
     width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .workflow-steps {
     grid-template-columns: 1fr;
   }
 

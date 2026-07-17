@@ -289,7 +289,7 @@ const viewTitles = {
   fulfillment: "发货履约",
   orders: "订单履约",
   suppliers: "供应商",
-  reports: "经营复盘",
+  reports: "线索复盘",
   mvpReadiness: "MVP 初版",
   settings: "配置中心"
 };
@@ -312,6 +312,7 @@ Object.assign(viewTitles, {
 });
 
 function ensureCompetitorNav() {
+  return;
   const productNav = document.querySelector('[data-view="products"]');
   if (!productNav || document.querySelector('[data-view="competitors"]')) return;
   const button = document.createElement("button");
@@ -340,6 +341,7 @@ const state = {
   storeLeads: [],
   storeLeadDraft: null,
   publicLeadLookupStatus: null,
+  b2bLeadStep: "start",
   selectedDemandResearchId: null,
   selectedLeadSourcePlanId: null,
   yiwugoCandidates: [],
@@ -715,6 +717,7 @@ function buildWorkspaceSnapshot() {
     storeLeads: state.storeLeads,
     storeLeadDraft: state.storeLeadDraft,
     publicLeadLookupStatus: state.publicLeadLookupStatus,
+    b2bLeadStep: state.b2bLeadStep,
     selectedDemandResearchId: state.selectedDemandResearchId,
     selectedLeadSourcePlanId: state.selectedLeadSourcePlanId,
     yiwugoCandidates: state.yiwugoCandidates,
@@ -749,6 +752,7 @@ function applyWorkspaceSnapshot(saved) {
   state.storeLeads = Array.isArray(saved.storeLeads) ? saved.storeLeads : [];
   state.storeLeadDraft = saved.storeLeadDraft || null;
   state.publicLeadLookupStatus = saved.publicLeadLookupStatus || null;
+  state.b2bLeadStep = saved.b2bLeadStep || "start";
   state.selectedDemandResearchId = saved.selectedDemandResearchId || null;
   state.selectedLeadSourcePlanId = saved.selectedLeadSourcePlanId || null;
   state.yiwugoCandidates = Array.isArray(saved.yiwugoCandidates) ? saved.yiwugoCandidates : [];
@@ -2484,6 +2488,21 @@ function renderDemandCountryCard(country) {
   `;
 }
 
+function demandStepButton(id, label, note, activeStep) {
+  return `
+    <button class="workflow-step ${activeStep === id ? "is-active" : ""}" type="button" data-b2b-step="${h(id)}">
+      <span>${h(label)}</span>
+      <small>${h(note)}</small>
+    </button>
+  `;
+}
+
+function setB2BLeadStep(step) {
+  state.b2bLeadStep = step;
+  saveWorkspaceState();
+  render();
+}
+
 function renderDemandResearch() {
   const selected = state.demandResearches.find((item) => item.id === state.selectedDemandResearchId) || state.demandResearches[0] || null;
   if (selected && state.selectedDemandResearchId !== selected.id) state.selectedDemandResearchId = selected.id;
@@ -2497,6 +2516,7 @@ function renderDemandResearch() {
   const selectedRun = selectedSourcePlan ? latestLeadSourceRun(selectedSourcePlan.id) : null;
   const relatedLeads = selected ? state.storeLeads.filter((lead) => lead.productIntent === selected.productIntent) : state.storeLeads;
   const draft = state.storeLeadDraft;
+  const leadStep = state.b2bLeadStep || "start";
   const nextCapturePlan =
     sourcePlans.find((plan) => ["待打开", "已记录", "待解析", "等待采集"].includes(plan.status)) ||
     sourcePlans.find((plan) => !["已入池", "跳过"].includes(plan.status)) ||
@@ -2520,8 +2540,23 @@ function renderDemandResearch() {
       ${metricCard("查询记录", sourceRuns.length, "已记录或准备解析的外部来源")}
       ${metricCard("店铺线索", state.storeLeads.length, "已确认进入本地线索池")}
     </div>
+    <section class="panel workflow-panel">
+      <div class="panel-header">
+        <div>
+          <p class="eyebrow">ToB 线索流程</p>
+          <h2>从商品需求到可联系店铺</h2>
+        </div>
+      </div>
+      <div class="workflow-steps">
+        ${demandStepButton("start", "1 输入需求", "商品、区域、数量", leadStep)}
+        ${demandStepButton("countries", "2 判断市场", "国家、城市、客户类型", leadStep)}
+        ${demandStepButton("sources", "3 生成来源", "地图、目录、搜索入口", leadStep)}
+        ${demandStepButton("collect", "4 查询采集", "低频自动或浏览器辅助", leadStep)}
+        ${demandStepButton("leads", "5 确认线索", "预览、入池、跟进状态", leadStep)}
+      </div>
+    </section>
 
-    <section class="panel">
+    ${leadStep === "start" ? `<section class="panel">
       <div class="panel-header">
         <div>
           <p class="eyebrow">一键找客户</p>
@@ -2559,12 +2594,12 @@ function renderDemandResearch() {
           <p>当前自动模式会先产出“待验证”线索和来源入口；接入 Google Places API 后，同一个入口可直接回填真实电话、网站、评分和地址。</p>
         </div>
       </form>
-    </section>
+    </section>` : ""}
 
     ${
       selected
         ? `
-          <div class="two-column">
+          ${leadStep === "countries" ? `<div class="two-column">
             <section class="panel">
               <div class="panel-header">
                 <div>
@@ -2601,8 +2636,8 @@ function renderDemandResearch() {
                 </div>
               </div>
             </section>
-          </div>
-          <section class="table-panel">
+          </div>` : ""}
+          ${leadStep === "sources" ? `<section class="table-panel">
             <div class="panel-header">
               <div>
                 <p class="eyebrow">低频定点采集</p>
@@ -2700,8 +2735,8 @@ function renderDemandResearch() {
                 </tbody>
               </table>
             </div>
-          </section>
-          <section class="panel">
+          </section>` : ""}
+          ${leadStep === "collect" ? `<section class="panel">
             <div class="panel-header">
               <div>
                 <p class="eyebrow">自动公开页查询</p>
@@ -2811,8 +2846,8 @@ function renderDemandResearch() {
                 </tbody>
               </table>
             </div>
-          </section>
-          <section class="panel">
+          </section>` : ""}
+          ${leadStep === "leads" ? `<section class="panel">
             <div class="panel-header">
               <div>
                 <p class="eyebrow">可见页采集</p>
@@ -2968,7 +3003,7 @@ function renderDemandResearch() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </section>` : ""}
         `
         : `<section class="panel"><div class="panel-body"><p class="muted">还没有需求探查项目。输入商品后，系统会先推荐国家和城市，再生成地图/点评搜索任务。</p></div></section>`
     }
@@ -4007,45 +4042,79 @@ function opportunityReviewPanel(opportunity) {
 }
 
 function renderDashboard(opportunities) {
-  const summary = buildStrategySummary(opportunities);
-  const selected = opportunities.find((item) => item.id === state.selectedId) || opportunities[0];
+  const selectedDemand = state.demandResearches.find((item) => item.id === state.selectedDemandResearchId) || state.demandResearches[0] || null;
+  const relatedTasks = selectedDemand ? state.leadSearchTasks.filter((task) => task.researchId === selectedDemand.id) : [];
+  const relatedPlans = selectedDemand ? state.leadSourcePlans.filter((plan) => plan.researchId === selectedDemand.id) : [];
+  const pendingLeads = state.storeLeads.filter((lead) => ["待验证", "待确认", "待联系"].includes(lead.status)).length;
+  const contactedLeads = state.storeLeads.filter((lead) => ["已联系", "有意向", "报价中", "成交"].includes(lead.status)).length;
   elements.views.dashboard.innerHTML = `
     <div class="metrics-grid">
-      ${metricCard("候选机会", opportunities.length, "来自东南亚与俄罗斯样例市场池")}
-      ${metricCard("建议小单测试", summary.testItems.length, "满足需求、毛利和风险阈值")}
-      ${metricCard("平均毛利率", percent(summary.averageMargin), "含平台费、支付费、广告和退货损耗")}
-      ${metricCard("高风险复核", summary.complianceItems.length, "俄罗斯或敏感类目进入人工审核")}
+      ${metricCard("需求项目", state.demandResearches.length, "已经创建的 ToB 商品需求")}
+      ${metricCard("信息源", state.leadSourcePlans.length, "地图、目录和搜索入口")}
+      ${metricCard("店铺线索", state.storeLeads.length, "已进入本地线索池")}
+      ${metricCard("待跟进", pendingLeads, "待验证或待联系的店铺")}
     </div>
 
     <div class="two-column">
       <section class="panel">
         <div class="panel-header">
           <div>
-            <p class="eyebrow">优先队列</p>
-            <h2>今日优先处理</h2>
+            <p class="eyebrow">主流程</p>
+            <h2>下一步该做什么</h2>
           </div>
-          <button class="small-button" type="button" data-go="opportunities">查看全部</button>
+          <button class="small-button" type="button" data-go="demandResearch">进入需求探查</button>
         </div>
-        <div class="panel-body opportunity-list">
-          ${opportunities.slice(0, 4).map(opportunityReviewCard).join("")}
+        <div class="panel-body detail-stack">
+          ${detailRows([
+            ["当前商品", selectedDemand?.productIntent || "还没有需求项目"],
+            ["目标国家", selectedDemand?.countries?.map((country) => country.country).slice(0, 5).join(" / ") || "先输入想卖的商品"],
+            ["采集任务", relatedTasks.length ? `${relatedTasks.length} 个城市/客户类型任务` : "待生成"],
+            ["来源入口", relatedPlans.length ? `${relatedPlans.length} 个公开来源入口` : "待生成"],
+            ["销售线索", `${state.storeLeads.length} 条入池，${contactedLeads} 条已开始跟进`]
+          ])}
+          <div class="checklist-grid">
+            <div class="check-item ${selectedDemand ? "is-ok" : "is-missing"}"><span>1</span><strong>输入商品</strong><p>用 MiniMax/本地规则理解客户类型。</p></div>
+            <div class="check-item ${relatedPlans.length ? "is-ok" : "is-missing"}"><span>2</span><strong>生成来源</strong><p>按国家、城市、店铺类型生成查询入口。</p></div>
+            <div class="check-item ${state.storeLeadDraft?.candidates?.length ? "is-ok" : "is-missing"}"><span>3</span><strong>预览线索</strong><p>自动低频查询或浏览器采集后确认。</p></div>
+            <div class="check-item ${state.storeLeads.length ? "is-ok" : "is-missing"}"><span>4</span><strong>进入跟进</strong><p>把确认店铺沉淀到线索池。</p></div>
+          </div>
         </div>
       </section>
-      ${opportunityReviewPanel(selected)}
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <p class="eyebrow">当前定位</p>
+            <h2>只做 ToB 找卖家</h2>
+          </div>
+        </div>
+        <div class="panel-body detail-stack">
+          ${detailRows([
+            ["输入", "想卖的商品或类目"],
+            ["输出", "目标国家、城市、店铺类型、公开联系方式候选"],
+            ["自动化边界", "低频公开页查询；地图和复杂页面走浏览器辅助"],
+            ["人工确认", "候选线索确认后才进入线索池"],
+            ["隐藏内容", "上架、订单、发货、供应链等旧跨境电商页面先不作为主导航展示"]
+          ])}
+        </div>
+      </section>
     </div>
 
     <div class="three-column">
-      ${summary.actions
-        .map(
-          (item) => `
-            <article class="kanban-card">
-              <p class="eyebrow">策略</p>
-              <h3>${item.title}</h3>
-              <p class="muted">${item.value}</p>
-              <p class="muted">${item.description}</p>
-            </article>
-          `
-        )
-        .join("")}
+      <article class="kanban-card">
+        <p class="eyebrow">第一步</p>
+        <h3>输入商品</h3>
+        <p class="muted">例如鱼竿、宠物用品、露营灯。系统判断客户类型和国家城市。</p>
+      </article>
+      <article class="kanban-card">
+        <p class="eyebrow">第二步</p>
+        <h3>查公开来源</h3>
+        <p class="muted">生成地图、目录、搜索入口；普通公开页可低频自动读取。</p>
+      </article>
+      <article class="kanban-card">
+        <p class="eyebrow">第三步</p>
+        <h3>确认线索</h3>
+        <p class="muted">预览候选店铺，确认后进入线索池，后续再接 CRM 跟进。</p>
+      </article>
     </div>
   `;
 }
@@ -5444,36 +5513,39 @@ function renderLogisticsManagement() {
   `;
 }
 
-function renderReports(opportunities) {
-  const summary = buildStrategySummary(opportunities);
+function renderReports() {
+  const openLeads = state.storeLeads.filter((lead) => ["待验证", "待确认", "待联系"].includes(lead.status)).length;
+  const activeLeads = state.storeLeads.filter((lead) => ["已联系", "有意向", "报价中"].includes(lead.status)).length;
+  const wonLeads = state.storeLeads.filter((lead) => lead.status === "成交").length;
+  const topCountries = [...new Set(state.storeLeads.map((lead) => lead.country).filter(Boolean))].slice(0, 6);
   elements.views.reports.innerHTML = `
     ${pageGuide(
-      "经营复盘页",
-      "这里汇总当前机会池、上架草稿和履约信号，帮助团队安排本周动作；它不是数据录入入口，缺数据时回到数据管理平台补齐。",
+      "线索复盘页",
+      "这里只复盘 ToB 店铺线索：哪些商品已经探查、哪些来源有效、哪些线索需要跟进。旧的上架、订单和履约复盘先从主流程隐藏。",
       [
-        { view: "listings", label: "看上架草稿" },
-        { view: "orders", label: "看订单数据" }
+        { view: "demandResearch", label: "继续找线索" },
+        { view: "dataSources", label: "管理来源规则" }
       ]
     )}
     <div class="metrics-grid">
-      ${metricCard("预估正毛利池", money(summary.grossProfit), "仅统计当前筛选范围内正毛利商品")}
-      ${metricCard("可测试商品", summary.testItems.length, "建议进入小单测试和上架草稿")}
-      ${metricCard("需补供应链", summary.supplierItems.length, "优先找低成本或更稳供应商")}
-      ${metricCard("合规待处理", summary.complianceItems.length, "敏感类目或俄罗斯专项")}
+      ${metricCard("需求项目", state.demandResearches.length, "已探查的商品或类目")}
+      ${metricCard("来源入口", state.leadSourcePlans.length, "已生成的地图/目录/搜索来源")}
+      ${metricCard("待跟进线索", openLeads, "待验证或待联系")}
+      ${metricCard("推进中", activeLeads + wonLeads, "已联系、有意向、报价中或成交")}
     </div>
     <section class="panel">
       <div class="panel-header">
         <div>
           <p class="eyebrow">Weekly Review</p>
-          <h2>本周经营动作</h2>
+          <h2>本周线索动作</h2>
         </div>
       </div>
       <div class="panel-body timeline">
-        <div class="timeline-item"><strong>周一</strong><p>刷新机会池，筛掉毛利率低于 ${percent(state.marginThreshold)} 的商品。</p></div>
-        <div class="timeline-item"><strong>周二</strong><p>为小单测试商品生成上架草稿，完成标题、属性、价格和图片检查。</p></div>
-        <div class="timeline-item"><strong>周三</strong><p>供应链复核主供应商和备选供应商，确认 MOQ、发货时效和退换政策。</p></div>
-        <div class="timeline-item"><strong>周四</strong><p>检查订单履约异常，优先处理待采购、物流待确认和退款风险。</p></div>
-        <div class="timeline-item"><strong>周五</strong><p>根据转化、毛利和风险分层：放大、观察、降价、下架或换供应商。</p></div>
+        <div class="timeline-item"><strong>周一</strong><p>输入 3-5 个想卖的商品，生成国家、城市和客户类型判断。</p></div>
+        <div class="timeline-item"><strong>周二</strong><p>为优先商品生成来源入口，先覆盖 ${topCountries.join("、") || "重点国家"}。</p></div>
+        <div class="timeline-item"><strong>周三</strong><p>用低频公开页查询或浏览器辅助采集，形成候选店铺预览。</p></div>
+        <div class="timeline-item"><strong>周四</strong><p>清洗和确认线索，补齐电话、官网、社媒和来源 URL。</p></div>
+        <div class="timeline-item"><strong>周五</strong><p>按线索分和状态安排联系优先级，沉淀有效来源规则。</p></div>
       </div>
     </section>
   `;
@@ -5812,20 +5884,30 @@ function renderSettingsConsole() {
   `;
 }
 
-function copyReport(opportunities) {
-  const lines = opportunities.map((item) => {
-    const product = item.marketProduct;
-    return `${product.country}/${product.platform} ${product.localTitle}: ${item.recommendedAction}, 分数 ${score(
-      item.scores.final
-    )}, 毛利率 ${percent(item.cost.grossMargin)}, 风险 ${score(item.scores.risk)}`;
-  });
-  const report = [`出海交易中台策略摘要`, `生成时间：${new Date().toLocaleString()}`, "", ...lines].join("\n");
+function copyReport() {
+  const selectedDemand = state.demandResearches.find((item) => item.id === state.selectedDemandResearchId) || state.demandResearches[0] || null;
+  const tasks = selectedDemand ? state.leadSearchTasks.filter((task) => task.researchId === selectedDemand.id) : [];
+  const plans = selectedDemand ? state.leadSourcePlans.filter((plan) => plan.researchId === selectedDemand.id) : [];
+  const leads = selectedDemand ? state.storeLeads.filter((lead) => lead.productIntent === selectedDemand.productIntent) : state.storeLeads;
+  const countryLine = selectedDemand?.countries?.map((country) => `${country.country}(${country.cities.slice(0, 3).join("/")})`).join("；") || "暂无";
+  const leadLines = leads.slice(0, 8).map((lead) => `${lead.country}/${lead.city} ${lead.businessName} ${lead.phone || lead.website || "待补联系方式"} [${lead.status}]`);
+  const report = [
+    "ToB 店铺线索摘要",
+    `生成时间：${new Date().toLocaleString()}`,
+    `当前商品：${selectedDemand?.productIntent || "暂无"}`,
+    `目标国家：${countryLine}`,
+    `采集任务：${tasks.length} 个`,
+    `信息源入口：${plans.length} 个`,
+    `线索池：${leads.length} 条`,
+    "",
+    ...leadLines
+  ].join("\n");
   navigator.clipboard
     .writeText(report)
     .then(() => {
       elements.copyReportButton.textContent = "已复制";
       setTimeout(() => {
-        elements.copyReportButton.textContent = "复制策略摘要";
+        elements.copyReportButton.textContent = "复制线索摘要";
       }, 1200);
     })
     .catch(() => {
@@ -5964,6 +6046,12 @@ function bindDynamicEvents() {
       runAutoLeadDiscovery(form).catch((error) => {
         window.alert(error.message || "一键线索生成失败。");
       });
+    });
+  });
+
+  document.querySelectorAll("[data-b2b-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      setB2BLeadStep(button.dataset.b2bStep);
     });
   });
 
@@ -6195,9 +6283,11 @@ function bindStaticEvents() {
     render();
   });
 
-  elements.copyReportButton.addEventListener("click", () => copyReport(getOpportunities()));
+  elements.copyReportButton.addEventListener("click", copyReport);
   elements.createDraftButton.addEventListener("click", () => {
-    state.view = "listings";
+    state.view = "demandResearch";
+    state.b2bLeadStep = "start";
+    saveWorkspaceState();
     render();
   });
 }
