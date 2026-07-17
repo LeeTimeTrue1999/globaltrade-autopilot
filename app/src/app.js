@@ -339,6 +339,7 @@ const state = {
   leadSourceRuns: [],
   storeLeads: [],
   storeLeadDraft: null,
+  publicLeadLookupStatus: null,
   selectedDemandResearchId: null,
   selectedLeadSourcePlanId: null,
   yiwugoCandidates: [],
@@ -713,6 +714,7 @@ function buildWorkspaceSnapshot() {
     leadSourceRuns: state.leadSourceRuns,
     storeLeads: state.storeLeads,
     storeLeadDraft: state.storeLeadDraft,
+    publicLeadLookupStatus: state.publicLeadLookupStatus,
     selectedDemandResearchId: state.selectedDemandResearchId,
     selectedLeadSourcePlanId: state.selectedLeadSourcePlanId,
     yiwugoCandidates: state.yiwugoCandidates,
@@ -746,6 +748,7 @@ function applyWorkspaceSnapshot(saved) {
   state.leadSourceRuns = Array.isArray(saved.leadSourceRuns) ? saved.leadSourceRuns : [];
   state.storeLeads = Array.isArray(saved.storeLeads) ? saved.storeLeads : [];
   state.storeLeadDraft = saved.storeLeadDraft || null;
+  state.publicLeadLookupStatus = saved.publicLeadLookupStatus || null;
   state.selectedDemandResearchId = saved.selectedDemandResearchId || null;
   state.selectedLeadSourcePlanId = saved.selectedLeadSourcePlanId || null;
   state.yiwugoCandidates = Array.isArray(saved.yiwugoCandidates) ? saved.yiwugoCandidates : [];
@@ -2009,6 +2012,125 @@ function importBrowserVisibleCapture(payload) {
   return true;
 }
 
+async function runPublicContactLookup(planId) {
+  const plan = state.leadSourcePlans.find((item) => item.id === planId);
+  if (!plan) return;
+  const now = new Date().toISOString();
+  state.selectedLeadSourcePlanId = plan.id;
+  state.publicLeadLookupStatus = {
+    planId: plan.id,
+    status: "running",
+    message: `正在低频查询：${plan.platform} / ${plan.keyword}`,
+    updatedAt: now
+  };
+  plan.status = "自动查询中";
+  plan.updatedAt = now;
+  upsertLeadSourceRun(plan, {
+    status: "自动查询中",
+    openedAt: plan.openedAt || now,
+    sourceUrl: plan.generatedUrl,
+    lookupMode: "low_frequency_public_page"
+  });
+  saveWorkspaceState();
+  render();
+
+  try {
+    const response = await fetch("/api/leads/public-contact-lookup", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        sourceUrl: plan.generatedUrl,
+        platform: plan.platform,
+        keyword: plan.keyword,
+        country: plan.country,
+        city: plan.city
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    const context = contextFromSourcePlan(plan);
+    context.sourceUrl = payload.sourceUrl || plan.generatedUrl;
+    const fetchedAt = payload.fetchedAt || new Date().toISOString();
+
+    if (!response.ok || payload.mode !== "public_page_lookup" || !payload.text) {
+      const message = payload.error || payload.reason || "该来源暂时不能自动查询，建议使用半自动浏览器采集。";
+      plan.status = payload.mode === "rate_limited" ? "等待低频重试" : "跳过";
+      plan.updatedAt = fetchedAt;
+      state.publicLeadLookupStatus = {
+        planId: plan.id,
+        status: payload.mode || "skipped",
+        message,
+        updatedAt: fetchedAt
+      };
+      upsertLeadSourceRun(plan, {
+        status: plan.status,
+        parsedAt: fetchedAt,
+        parsedLeadCount: 0,
+        skipReason: message,
+        lookupMode: "low_frequency_public_page"
+      });
+      logAction("b2b.public_contact_lookup_skipped", { planId: plan.id, reason: message, platform: plan.platform });
+      saveWorkspaceState();
+      render();
+      return;
+    }
+
+    const candidates = parseStoreLeadCandidates(payload.text, context);
+    state.storeLeadDraft = {
+      id: `store-lead-draft-${Date.now()}`,
+      ...context,
+      rawText: payload.text.slice(0, 12000),
+      captureTitle: "低频公开页自动查询",
+      candidates,
+      createdAt: fetchedAt
+    };
+    plan.status = candidates.length > 0 ? "已解析" : "待补信息";
+    plan.parsedLeadCount = candidates.length;
+    plan.parsedAt = fetchedAt;
+    plan.updatedAt = fetchedAt;
+    state.publicLeadLookupStatus = {
+      planId: plan.id,
+      status: candidates.length > 0 ? "parsed" : "empty",
+      message: candidates.length > 0 ? `已自动解析 ${candidates.length} 条候选线索，等待确认入池。` : "公开页面已读取，但没有解析到可用店铺联系方式。",
+      updatedAt: fetchedAt
+    };
+    upsertLeadSourceRun(plan, {
+      status: plan.status,
+      sourceUrl: context.sourceUrl,
+      parsedAt: fetchedAt,
+      parsedLeadCount: candidates.length,
+      lookupMode: "low_frequency_public_page"
+    });
+    logAction("b2b.public_contact_lookup_completed", {
+      planId: plan.id,
+      parsedCount: candidates.length,
+      platform: plan.platform,
+      sourceUrl: context.sourceUrl
+    });
+    saveWorkspaceState();
+    render();
+  } catch (error) {
+    const failedAt = new Date().toISOString();
+    plan.status = "失败";
+    plan.updatedAt = failedAt;
+    state.publicLeadLookupStatus = {
+      planId: plan.id,
+      status: "failed",
+      message: error.message || "低频自动查询失败。",
+      updatedAt: failedAt
+    };
+    upsertLeadSourceRun(plan, {
+      status: "失败",
+      parsedAt: failedAt,
+      parsedLeadCount: 0,
+      skipReason: state.publicLeadLookupStatus.message,
+      lookupMode: "low_frequency_public_page"
+    });
+    logAction("b2b.public_contact_lookup_failed", { planId: plan.id, error: state.publicLeadLookupStatus.message });
+    saveWorkspaceState();
+    render();
+  }
+}
+
 function handleIncomingLeadCapture() {
   const prefix = "#lead-capture=";
   if (!window.location.hash.startsWith(prefix)) return false;
@@ -2566,6 +2688,7 @@ function renderDemandResearch() {
                                     ${["待打开", "已记录", "等待采集", "待解析", "已解析", "已入池", "失败", "跳过"].map((status) => `<option value="${status}" ${plan.status === status ? "selected" : ""}>${status}</option>`).join("")}
                                   </select>
                                   <button class="small-button" type="button" data-start-browser-capture="${h(plan.id)}">开始采集</button>
+                                  <button class="small-button" type="button" data-public-contact-lookup="${h(plan.id)}">自动低频查询</button>
                                   <button class="small-button" type="button" data-open-lead-source="${h(plan.id)}">记录查询</button>
                                   <button class="small-button" type="button" data-prepare-lead-source="${h(plan.id)}">带入解析</button>
                                 </td>
@@ -2576,6 +2699,30 @@ function renderDemandResearch() {
                   }
                 </tbody>
               </table>
+            </div>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">自动公开页查询</p>
+                <h2>低频读取公开页面并生成候选联系方式</h2>
+              </div>
+              <div class="form-actions">
+                <button class="primary-button" type="button" data-public-contact-lookup="${h((selectedSourcePlan || nextCapturePlan)?.id || "")}" ${(selectedSourcePlan || nextCapturePlan) ? "" : "disabled"}>自动低频查询当前来源</button>
+              </div>
+            </div>
+            <div class="panel-body detail-stack">
+              ${detailRows([
+                ["当前来源", selectedSourcePlan ? `${selectedSourcePlan.platform} / ${selectedSourcePlan.country} / ${selectedSourcePlan.city}` : nextCapturePlan ? `${nextCapturePlan.platform} / ${nextCapturePlan.country} / ${nextCapturePlan.city}` : "暂无待查询来源"],
+                ["执行方式", "每次只读取一个公开页面，不翻页、不递归、不保存 cookie；默认至少间隔 20 秒。"],
+                ["自动跳过", "Google Maps、社交平台、登录/验证码页面和非文本内容会跳过，转到半自动可见页采集。"],
+                ["结果处理", "自动查询只生成候选线索预览，仍需确认后才进入线索池。"]
+              ])}
+              ${
+                state.publicLeadLookupStatus
+                  ? `<div class="message-list ${state.publicLeadLookupStatus.status === "parsed" ? "success" : state.publicLeadLookupStatus.status === "running" ? "info" : "warning"}"><p>${h(state.publicLeadLookupStatus.message)}</p></div>`
+                  : `<div class="message-list"><p>适合公开行业目录、官网列表、普通搜索结果页；复杂地图页建议继续使用半自动浏览器采集。</p></div>`
+              }
             </div>
           </section>
           <section class="panel">
@@ -5853,6 +6000,16 @@ function bindDynamicEvents() {
   document.querySelectorAll("[data-start-browser-capture]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.dataset.startBrowserCapture) beginBrowserAssistedCapture(button.dataset.startBrowserCapture);
+    });
+  });
+
+  document.querySelectorAll("[data-public-contact-lookup]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.publicContactLookup) {
+        runPublicContactLookup(button.dataset.publicContactLookup).catch((error) => {
+          window.alert(error.message || "自动低频查询失败。");
+        });
+      }
     });
   });
 

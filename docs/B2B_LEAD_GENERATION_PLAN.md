@@ -17,6 +17,7 @@ Example:
 7. When API access is unavailable, operators can use a no-API browser-visible capture bookmarklet to bring the currently visible search/map/directory page text back into the local parser.
 8. The semi-automatic MVP queue can now select a source plan, copy a plan-bound capture bookmarklet, open the external source URL, and route returned visible text to the correct lead preview.
 9. Product intent understanding can optionally use MiniMax through a local server-side proxy; if no key is configured, the frontend falls back to local deterministic rules.
+10. Low-frequency public contact lookup can read one public text page from a selected source plan, with rate limits, no recursion, no cookies, high-risk source skipping, and preview-confirm before lead-pool entry.
 
 ## Core Workflow
 
@@ -68,7 +69,7 @@ MiniMax is connected only through the local dev server:
 
 1. The frontend sends product intent, target region, and optional countries to `/api/ai/understand-demand`.
 2. The local server reads `MINIMAX_API_KEY` from `.env.local` or the process environment.
-3. The server calls MiniMax and asks for strict JSON with product type, customer types, search terms, target countries/cities, demand signals, and reasoning.
+3. The server calls MiniMax through the OpenAI-compatible endpoint `https://api.minimaxi.com/v1/chat/completions` and asks for strict JSON with product type, customer types, search terms, target countries/cities, demand signals, and reasoning.
 4. The server normalizes that JSON and returns it to the frontend.
 5. If the key is missing or the API call fails, the frontend uses local rule-based inference.
 
@@ -98,6 +99,19 @@ The local MVP now adds a queue layer on top of no-API capture:
 6. The local app receives the visible text, matches it back to the original source plan, parses store leads, and shows the preview-confirm step.
 
 This is the practical MVP bridge between fully manual copy/paste and stable API enrichment. It still requires a human-controlled browser action on the external page.
+
+## Low-Frequency Public Contact Lookup
+
+The local MVP also supports a constrained automatic lookup path for public pages:
+
+1. The operator creates demand research and source plans.
+2. The operator clicks `自动低频查询当前来源` on a selected source plan.
+3. The local server reads only that one `sourceUrl`.
+4. The server does not follow links, does not paginate, does not store cookies, and applies a default 20-second interval between requests.
+5. Google Maps, social platforms, login-heavy pages, CAPTCHA-heavy pages, and non-text responses are skipped back to browser-assisted capture.
+6. Returned text is parsed into a store-lead preview, and leads enter the pool only after explicit confirmation.
+
+This is not a crawler. It is a low-volume, one-page public evidence reader for directories, official store lists, and simple search result pages.
 
 ## Lead Sources
 

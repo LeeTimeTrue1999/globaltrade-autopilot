@@ -5,6 +5,10 @@ import { extname, join, normalize } from "node:path";
 const root = process.cwd();
 const appRoot = join(root, "app");
 const port = Number(process.env.PORT || 4173);
+const publicLookupRate = {
+  lastRequestAt: 0,
+  minIntervalMs: Number(process.env.PUBLIC_LEAD_LOOKUP_MIN_INTERVAL_MS || 20000)
+};
 
 function loadLocalEnv() {
   [".env.local", ".env"].forEach((fileName) => {
@@ -85,17 +89,58 @@ function readRequestJson(request) {
 function extractJsonObject(text) {
   const raw = String(text || "").trim();
   if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch (error) {
-    const match = raw.match(/\{[\s\S]*\}/);
-    if (!match) return null;
+
+  const collectJsonObjects = (source) => {
+    const candidates = [];
+    for (let start = 0; start < source.length; start += 1) {
+      if (source[start] !== "{") continue;
+      let depth = 0;
+      let inString = false;
+      let escaped = false;
+      for (let index = start; index < source.length; index += 1) {
+        const char = source[index];
+        if (inString) {
+          if (escaped) {
+            escaped = false;
+          } else if (char === "\\") {
+            escaped = true;
+          } else if (char === "\"") {
+            inString = false;
+          }
+          continue;
+        }
+        if (char === "\"") {
+          inString = true;
+        } else if (char === "{") {
+          depth += 1;
+        } else if (char === "}") {
+          depth -= 1;
+          if (depth === 0) {
+            candidates.push(source.slice(start, index + 1));
+            break;
+          }
+        }
+      }
+    }
+    return candidates;
+  };
+
+  const sources = [raw.replace(/<think>[\s\S]*?<\/think>/gi, "").trim(), raw].filter(Boolean);
+  for (const source of sources) {
     try {
-      return JSON.parse(match[0]);
-    } catch (nestedError) {
-      return null;
+      return JSON.parse(source);
+    } catch (error) {
+      const candidates = collectJsonObjects(source);
+      for (let index = candidates.length - 1; index >= 0; index -= 1) {
+        try {
+          return JSON.parse(candidates[index]);
+        } catch (nestedError) {
+          // Try the next candidate.
+        }
+      }
     }
   }
+  return null;
 }
 
 function normalizeStringList(value, fallback = []) {
@@ -165,6 +210,19 @@ async function handleAiDemandUnderstanding(request, response) {
       `指定国家：${selectedCountries || "未指定"}`
     ].join("\n");
 
+    const aiPrompt = [
+      "You are a B2B lead discovery analyst for cross-border wholesale.",
+      "Return strict JSON only. Do not include markdown, explanations, or comments.",
+      "Task: infer likely business customer types, search terms, priority countries/cities, and demand reasons from the product intent.",
+      "The countries and cities will be used for map/search/directory discovery of public business contact information.",
+      "Do not generate private personal contacts. Focus on public stores, distributors, wholesalers, and local businesses.",
+      "JSON schema:",
+      `{"productIntent":"string","productType":"string","customerTypes":["string"],"searchTerms":["string"],"targetCountries":[{"country":"string","region":"string","cities":["string"],"demandSignals":["string"],"retailKeywords":["string"],"baseScore":80}],"reasoning":["string"],"confidence":"A|B|C"}`,
+      `Product intent: ${productIntent}`,
+      `Preferred region: ${targetRegion}`,
+      `Operator selected countries: ${selectedCountries || "not specified"}`
+    ].join("\n");
+
     const model = process.env.MINIMAX_MODEL || "MiniMax-M2.7";
     const apiResponse = await fetch("https://api.minimaxi.com/v1/chat/completions", {
       method: "POST",
@@ -177,7 +235,7 @@ async function handleAiDemandUnderstanding(request, response) {
         messages: [
           {
             role: "user",
-            content: prompt
+            content: aiPrompt
           }
         ],
         temperature: 0.2
@@ -344,6 +402,128 @@ async function handleYiwugoDiscover(request, response) {
   }
 }
 
+function htmlToReadableText(html) {
+  return String(html || "")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|li|tr|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/gi, "\"")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isBlockedLookupHost(url) {
+  const href = url.href.toLowerCase();
+  const host = url.hostname.toLowerCase();
+  return [
+    "google.com/maps",
+    "maps.google.",
+    "facebook.com",
+    "instagram.com",
+    "tiktok.com",
+    "linkedin.com"
+  ].some((blocked) => href.includes(blocked) || host.includes(blocked));
+}
+
+async function handlePublicContactLookup(request, response) {
+  if (request.method !== "POST") {
+    json(response, 405, { error: "Method not allowed" });
+    return;
+  }
+
+  try {
+    const now = Date.now();
+    const waitMs = publicLookupRate.lastRequestAt + publicLookupRate.minIntervalMs - now;
+    if (waitMs > 0) {
+      json(response, 429, {
+        mode: "rate_limited",
+        error: `低频查询保护中，请 ${Math.ceil(waitMs / 1000)} 秒后再试。`,
+        retryAfterSeconds: Math.ceil(waitMs / 1000)
+      });
+      return;
+    }
+
+    const body = await readRequestJson(request);
+    const sourceUrl = String(body.sourceUrl || "").trim();
+    let url;
+    try {
+      url = new URL(sourceUrl);
+    } catch (error) {
+      json(response, 400, { mode: "skipped", error: "来源 URL 无效。" });
+      return;
+    }
+
+    if (!["http:", "https:"].includes(url.protocol)) {
+      json(response, 400, { mode: "skipped", error: "只允许 http/https 公开页面。" });
+      return;
+    }
+
+    if (isBlockedLookupHost(url)) {
+      json(response, 200, {
+        mode: "skipped",
+        reason: "该来源属于地图、社交或登录/反自动化风险较高的平台，保留半自动浏览器可见页采集。"
+      });
+      return;
+    }
+
+    publicLookupRate.lastRequestAt = now;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.PUBLIC_LEAD_LOOKUP_TIMEOUT_MS || 12000));
+    const upstream = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        "user-agent": "GlobalTradeMVP/0.1 low-frequency public business contact lookup",
+        accept: "text/html,text/plain;q=0.9,*/*;q=0.5"
+      }
+    }).finally(() => clearTimeout(timeout));
+
+    const contentType = upstream.headers.get("content-type") || "";
+    if (!upstream.ok) {
+      json(response, 502, {
+        mode: "failed",
+        error: `来源页面返回 ${upstream.status}，已跳过。`
+      });
+      return;
+    }
+    if (!/text\/html|text\/plain|application\/xhtml\+xml/i.test(contentType)) {
+      json(response, 200, {
+        mode: "skipped",
+        reason: `来源类型 ${contentType || "unknown"} 不适合文本线索提取。`
+      });
+      return;
+    }
+
+    const html = await upstream.text();
+    const text = htmlToReadableText(html).slice(0, Number(process.env.PUBLIC_LEAD_LOOKUP_TEXT_LIMIT || 12000));
+    json(response, 200, {
+      mode: "public_page_lookup",
+      sourceUrl: url.href,
+      fetchedAt: new Date().toISOString(),
+      text,
+      textLength: text.length,
+      safety: {
+        minIntervalMs: publicLookupRate.minIntervalMs,
+        noRecursiveCrawl: true,
+        noLoginOrCookie: true
+      }
+    });
+  } catch (error) {
+    json(response, 500, {
+      mode: "failed",
+      error: error.name === "AbortError" ? "来源页面响应超时，已跳过。" : error.message || "公开联系方式查询失败。"
+    });
+  }
+}
+
 const server = createServer((request, response) => {
   const requestedPath = new URL(request.url || "/", `http://localhost:${port}`).pathname;
   if (requestedPath === "/api/yiwugo/discover") {
@@ -352,6 +532,10 @@ const server = createServer((request, response) => {
   }
   if (requestedPath === "/api/ai/understand-demand") {
     handleAiDemandUnderstanding(request, response);
+    return;
+  }
+  if (requestedPath === "/api/leads/public-contact-lookup") {
+    handlePublicContactLookup(request, response);
     return;
   }
 

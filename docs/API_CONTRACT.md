@@ -193,9 +193,53 @@ Response:
 Local MVP rules:
 
 - The dev server reads `MINIMAX_API_KEY` from `.env.local` or process environment.
+- The MiniMax proxy calls `https://api.minimaxi.com/v1/chat/completions` with `MINIMAX_MODEL`, defaulting to `MiniMax-M2.7`.
 - The frontend never receives the API key.
 - If the key is missing or the provider fails, the API returns `mode: "local_fallback"` and the frontend uses local deterministic rules.
 - `.env.local` and `.env` must never be committed. Only `.env.example` with empty placeholders is allowed.
+
+## Public Contact Lookup
+
+```http
+POST /api/leads/public-contact-lookup
+```
+
+Request:
+
+```json
+{
+  "sourceUrl": "https://example-directory.com/search?q=fishing+tackle+bangkok",
+  "platform": "行业目录",
+  "keyword": "fishing tackle shop Bangkok",
+  "country": "Thailand",
+  "city": "Bangkok"
+}
+```
+
+Response:
+
+```json
+{
+  "mode": "public_page_lookup",
+  "sourceUrl": "https://example-directory.com/search?q=fishing+tackle+bangkok",
+  "fetchedAt": "2026-07-17T00:00:00.000Z",
+  "text": "visible public page text",
+  "textLength": 1200,
+  "safety": {
+    "minIntervalMs": 20000,
+    "noRecursiveCrawl": true,
+    "noLoginOrCookie": true
+  }
+}
+```
+
+Local MVP rules:
+
+- One request reads one public text page only.
+- The endpoint does not follow links, paginate, retry in a loop, or store cookies.
+- Default minimum interval is 20 seconds and can be raised with `PUBLIC_LEAD_LOOKUP_MIN_INTERVAL_MS`.
+- Google Maps, social platforms, login-heavy pages, CAPTCHA-heavy pages, and non-text content are skipped.
+- Results are routed into preview-confirm lead parsing; they are not automatically confirmed into the lead pool.
 
 ## Strategy
 
