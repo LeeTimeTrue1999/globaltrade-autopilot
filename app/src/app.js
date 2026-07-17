@@ -1606,6 +1606,42 @@ function buildB2BDemandCountries(productIntent, targetRegion, selectedCountries)
     .slice(0, 6);
 }
 
+function buildB2BDemandCountriesFromAi(productIntent, targetRegion, selectedCountries, aiSuggestion) {
+  const suggestion = aiSuggestion && typeof aiSuggestion === "object" ? aiSuggestion : null;
+  if (!suggestion?.targetCountries?.length) return buildB2BDemandCountries(productIntent, targetRegion, selectedCountries);
+  const wantedCountries = String(selectedCountries || "")
+    .split(/[，,\n]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const customerTypes = Array.isArray(suggestion.customerTypes) && suggestion.customerTypes.length > 0 ? suggestion.customerTypes : inferB2BCustomerRules(productIntent).customerTypes;
+  const searchTerms = Array.isArray(suggestion.searchTerms) && suggestion.searchTerms.length > 0 ? suggestion.searchTerms : inferB2BCustomerRules(productIntent).searchTerms;
+  return suggestion.targetCountries
+    .filter((profile) => (wantedCountries.length > 0 ? wantedCountries.includes(profile.country) : true))
+    .filter((profile) => (targetRegion === "all" || !profile.region ? true : profile.region === targetRegion || targetRegion === "东南亚" || profile.region === "AI 推荐"))
+    .map((profile, index) => {
+      const scoreValue = Math.max(60, Math.min(96, Number(profile.baseScore || 82) - index));
+      return {
+        country: profile.country,
+        region: profile.region || "AI 推荐",
+        cities: Array.isArray(profile.cities) ? profile.cities.slice(0, 5) : [],
+        demandSignals: Array.isArray(profile.demandSignals) ? profile.demandSignals.slice(0, 5) : [],
+        retailKeywords: Array.isArray(profile.retailKeywords) ? profile.retailKeywords.slice(0, 5) : [],
+        baseScore: scoreValue,
+        score: scoreValue,
+        scoreLabel: scoreValue >= 88 ? "优先验证" : scoreValue >= 80 ? "值得采集" : "观察补证据",
+        customerTypes,
+        searchTerms: [...new Set([...searchTerms, ...(profile.retailKeywords || [])])].slice(0, 7),
+        evidence: [
+          ...(Array.isArray(profile.demandSignals) ? profile.demandSignals : []),
+          `AI 目标客户类型：${customerTypes.slice(0, 3).join("、")}`,
+          "需用地图/点评/行业目录采集公开联系方式验证真实店铺密度"
+        ]
+      };
+    })
+    .filter((profile) => profile.country && profile.cities.length > 0)
+    .slice(0, 6);
+}
+
 function buildLeadSearchTasks(research) {
   const sourcePlatforms = ["Google Maps", "高德地图", "百度地图", "大众点评"];
   return research.countries.flatMap((country) =>
@@ -1631,9 +1667,11 @@ function buildLeadSearchTasks(research) {
   );
 }
 
-function createDemandResearchFromInput(productIntent, targetRegion, selectedCountries) {
+function createDemandResearchFromInput(productIntent, targetRegion, selectedCountries, aiSuggestion = null) {
   if (!productIntent) return;
-  const countries = buildB2BDemandCountries(productIntent, targetRegion, selectedCountries);
+  const countries = aiSuggestion
+    ? buildB2BDemandCountriesFromAi(productIntent, targetRegion, selectedCountries, aiSuggestion)
+    : buildB2BDemandCountries(productIntent, targetRegion, selectedCountries);
   const research = {
     id: `demand-${Date.now()}`,
     productIntent,
@@ -1641,25 +1679,49 @@ function createDemandResearchFromInput(productIntent, targetRegion, selectedCoun
     selectedCountries,
     createdAt: new Date().toISOString(),
     status: "待采集线索",
-    dataSources: ["搜索趋势/关键词", "地图 POI", "点评/本地生活平台", "行业目录", "网页搜索结果"],
+    dataSources: aiSuggestion
+      ? ["MiniMax 语义理解", "搜索趋势/关键词", "地图 POI", "点评/本地生活平台", "行业目录", "网页搜索结果"]
+      : ["搜索趋势/关键词", "地图 POI", "点评/本地生活平台", "行业目录", "网页搜索结果"],
+    aiProvider: aiSuggestion ? "MiniMax" : "",
+    aiConfidence: aiSuggestion?.confidence || "",
+    aiReasoning: aiSuggestion?.reasoning || [],
     countries
   };
   const tasks = buildLeadSearchTasks(research);
   state.demandResearches = [research, ...state.demandResearches].slice(0, 20);
   state.leadSearchTasks = [...tasks, ...state.leadSearchTasks].slice(0, 300);
   state.selectedDemandResearchId = research.id;
-  logAction("b2b.demand_research_created", { productIntent, countryCount: countries.length, taskCount: tasks.length });
+  logAction("b2b.demand_research_created", { productIntent, countryCount: countries.length, taskCount: tasks.length, aiProvider: research.aiProvider });
   saveWorkspaceState();
   render();
   return { research, tasks };
 }
 
-function createDemandResearch(form) {
+async function requestAiDemandUnderstanding(productIntent, targetRegion, selectedCountries) {
+  try {
+    const response = await fetch("/api/ai/understand-demand", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ productIntent, targetRegion, selectedCountries })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.mode !== "minimax" || !payload.suggestion?.targetCountries?.length) {
+      return { suggestion: null, message: payload.error || "AI 未返回可用结果，已使用本地规则。" };
+    }
+    return { suggestion: payload.suggestion, message: "" };
+  } catch (error) {
+    return { suggestion: null, message: "AI 接口不可用，已使用本地规则。" };
+  }
+}
+
+async function createDemandResearch(form) {
   const formData = new FormData(form);
   const productIntent = String(formData.get("productIntent") || "").trim();
   const targetRegion = String(formData.get("targetRegion") || "东南亚");
   const selectedCountries = String(formData.get("selectedCountries") || "");
-  createDemandResearchFromInput(productIntent, targetRegion, selectedCountries);
+  const ai = await requestAiDemandUnderstanding(productIntent, targetRegion, selectedCountries);
+  createDemandResearchFromInput(productIntent, targetRegion, selectedCountries, ai.suggestion);
+  if (ai.message) window.alert(ai.message);
 }
 
 function updateLeadSearchTaskStatus(taskId, status) {
@@ -2003,7 +2065,7 @@ function buildAutoStoreLead(plan, task, index) {
   return lead;
 }
 
-function runAutoLeadDiscovery(form) {
+async function runAutoLeadDiscovery(form) {
   const formData = new FormData(form);
   const productIntent = String(formData.get("productIntent") || "").trim();
   if (!productIntent) return;
@@ -2011,7 +2073,8 @@ function runAutoLeadDiscovery(form) {
   const selectedCountries = String(formData.get("selectedCountries") || "");
   const requestedLimit = Number(formData.get("leadLimit") || 18);
   const leadLimit = Math.max(6, Math.min(60, Number.isFinite(requestedLimit) ? requestedLimit : 18));
-  const created = createDemandResearchFromInput(productIntent, targetRegion, selectedCountries);
+  const ai = await requestAiDemandUnderstanding(productIntent, targetRegion, selectedCountries);
+  const created = createDemandResearchFromInput(productIntent, targetRegion, selectedCountries, ai.suggestion);
   if (!created) return;
   const plans = generateLeadSourcePlans(created.research.id) || [];
   const tasksById = new Map(state.leadSearchTasks.map((task) => [task.id, task]));
@@ -2051,10 +2114,11 @@ function runAutoLeadDiscovery(form) {
     productIntent,
     leadCount: uniqueAutoLeads.length,
     sourceRunCount: newRuns.length,
-    mode: "semantic_auto_discovery"
+    mode: ai.suggestion ? "minimax_semantic_discovery" : "semantic_auto_discovery"
   });
   saveWorkspaceState();
   render();
+  if (ai.message) window.alert(ai.message);
 }
 
 function normalizeLeadPhone(text) {
@@ -2401,6 +2465,8 @@ function renderDemandResearch() {
               <div class="panel-body detail-stack">
                 ${detailRows([
                   ["商品意图", selected.productIntent],
+                  ["语义理解", selected.aiProvider ? `${selected.aiProvider} / 置信度 ${selected.aiConfidence || "未标注"}` : "本地规则"],
+                  ["AI 理由", selected.aiReasoning?.length ? selected.aiReasoning.join("；") : "未接入或未返回 AI 理由"],
                   ["需求信号来源", selected.dataSources.join(" / ")],
                   ["采集原则", "低频、定点、公开可见、人工确认，不绕验证码或登录限制"],
                   ["线索字段", "店名、地址、公开电话、官网/社媒、评分、评论数、来源 URL、关键词、采集时间"]
@@ -5739,14 +5805,18 @@ function bindDynamicEvents() {
   document.querySelectorAll("[data-demand-form]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      createDemandResearch(form);
+      createDemandResearch(form).catch((error) => {
+        window.alert(error.message || "需求探查创建失败。");
+      });
     });
   });
 
   document.querySelectorAll("[data-auto-lead-form]").forEach((form) => {
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      runAutoLeadDiscovery(form);
+      runAutoLeadDiscovery(form).catch((error) => {
+        window.alert(error.message || "一键线索生成失败。");
+      });
     });
   });
 

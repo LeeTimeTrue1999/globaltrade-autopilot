@@ -16,12 +16,15 @@ Example:
 6. Production enrichment should use Google Places API, official POI APIs, or explicit browser-assisted extraction to fill real phone, website, rating, and address evidence.
 7. When API access is unavailable, operators can use a no-API browser-visible capture bookmarklet to bring the currently visible search/map/directory page text back into the local parser.
 8. The semi-automatic MVP queue can now select a source plan, copy a plan-bound capture bookmarklet, open the external source URL, and route returned visible text to the correct lead preview.
+9. Product intent understanding can optionally use MiniMax through a local server-side proxy; if no key is configured, the frontend falls back to local deterministic rules.
 
 ## Core Workflow
 
 ```mermaid
 flowchart LR
   A["输入商品/类目"] --> B["需求探查"]
+  A --> M["可选 MiniMax 语义代理"]
+  M --> B
   B --> C["推荐国家和城市"]
   C --> D["生成地图/点评/目录搜索任务"]
   D --> E["自动生成信息源和解析规则"]
@@ -58,6 +61,18 @@ The local MVP now treats the product input as the main operating entry point:
 5. Create `待验证` store leads with source URLs and confidence `C`.
 
 These one-click leads are useful for workflow testing and sales list structuring, but they are not a substitute for real POI enrichment. Real contact fields should come from Google Places API, official local POI APIs, approved data providers, or explicit browser-assisted visible-page extraction.
+
+## Optional MiniMax Understanding
+
+MiniMax is connected only through the local dev server:
+
+1. The frontend sends product intent, target region, and optional countries to `/api/ai/understand-demand`.
+2. The local server reads `MINIMAX_API_KEY` from `.env.local` or the process environment.
+3. The server calls MiniMax and asks for strict JSON with product type, customer types, search terms, target countries/cities, demand signals, and reasoning.
+4. The server normalizes that JSON and returns it to the frontend.
+5. If the key is missing or the API call fails, the frontend uses local rule-based inference.
+
+The MiniMax key must never be placed in frontend code, localStorage, sample data, docs, screenshots, or Git history. Commit only `.env.example` with empty placeholders.
 
 ## No-API Browser Capture
 
@@ -193,6 +208,7 @@ This is the practical MVP bridge between fully manual copy/paste and stable API 
 | 信息源自动发现 | Generate Google Maps, Baidu/Amap, Dianping, web search, and industry-directory source URLs with parser rules and safety boundaries. |
 | 外部查询记录 | Open generated source URLs, record query runs, prefill parser context, and write parsed/confirmed lead counts back to the source run. |
 | 一键线索生成 | Convert product intent into demand research, source plans, query runs, and `待验证` store leads with no extra operator step. |
+| MiniMax 语义理解 | Optional server-side AI enhancement for product type, customer type, search term, country/city, and reasoning recommendations. |
 | 无 API 可见页采集 | Capture current browser-visible search/map/directory page text through a bookmarklet and parse it into the preview-confirm lead flow. |
 | 半自动浏览器采集 | Start a selected source plan, copy a plan-bound capture bookmarklet, open the external page, and route returned visible text to the correct source plan. |
 | 店铺线索池 | Parse/store business leads, dedupe, score, and manage source evidence after human confirmation. |
@@ -210,7 +226,8 @@ This is the practical MVP bridge between fully manual copy/paste and stable API 
 7. Add one-click semantic lead generation from product intent. Done in local MVP.
 8. Add no-API browser-visible page capture bookmarklet. Done in local MVP.
 9. Add semi-automatic browser-assisted capture queue. Done in local MVP.
-10. Add Google Places API or approved POI API enrichment for real phone/website/rating/address fields.
-11. Add browser-assisted structured store-card extraction where permitted by browser context.
-12. Add CRM follow-up statuses and contact notes.
-13. Add message templates by language and product category.
+10. Add secure MiniMax demand-understanding proxy. Done in local MVP.
+11. Add Google Places API or approved POI API enrichment for real phone/website/rating/address fields.
+12. Add browser-assisted structured store-card extraction where permitted by browser context.
+13. Add CRM follow-up statuses and contact notes.
+14. Add message templates by language and product category.

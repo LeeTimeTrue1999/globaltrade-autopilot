@@ -8,6 +8,8 @@ Data source adapters must emit the normalized intake envelope defined in `docs/D
 
 Shopee, Lazada, and TikTok Shop integration phases and field mapping rules are organized in `docs/MARKETPLACE_PLATFORM_ADAPTERS.md`.
 
+Current local MVP also exposes a small dev-server API for safe server-side AI proxying. Secrets must stay in environment variables or a future backend secret store, never in frontend code or localStorage.
+
 ## Auth
 
 ```http
@@ -143,6 +145,57 @@ POST /api/platform-adapters/visible-page-captures
 - API token 只能存后端 secret store，不能进前端 localStorage。
 - 竞品页和搜索页优先走可见页采集或浏览器辅助采集，不把公开页面当成稳定服务端 API。
 - 发布、调价、发货回传、广告预算修改必须走审批和审计。
+
+## AI Demand Understanding
+
+```http
+POST /api/ai/understand-demand
+```
+
+Request:
+
+```json
+{
+  "productIntent": "鱼竿",
+  "targetRegion": "东南亚",
+  "selectedCountries": "泰国,菲律宾"
+}
+```
+
+Response:
+
+```json
+{
+  "configured": true,
+  "mode": "minimax",
+  "model": "MiniMax-M2.7",
+  "suggestion": {
+    "productIntent": "鱼竿",
+    "productType": "钓鱼用品",
+    "customerTypes": ["钓具店", "户外用品店"],
+    "searchTerms": ["fishing tackle shop", "bait and tackle"],
+    "targetCountries": [
+      {
+        "country": "泰国",
+        "region": "东南亚",
+        "cities": ["曼谷", "普吉"],
+        "demandSignals": ["旅游和休闲垂钓场景多"],
+        "retailKeywords": ["fishing tackle shop"],
+        "baseScore": 88
+      }
+    ],
+    "reasoning": ["公开地图和目录中存在可验证店铺"],
+    "confidence": "B"
+  }
+}
+```
+
+Local MVP rules:
+
+- The dev server reads `MINIMAX_API_KEY` from `.env.local` or process environment.
+- The frontend never receives the API key.
+- If the key is missing or the provider fails, the API returns `mode: "local_fallback"` and the frontend uses local deterministic rules.
+- `.env.local` and `.env` must never be committed. Only `.env.example` with empty placeholders is allowed.
 
 ## Strategy
 
